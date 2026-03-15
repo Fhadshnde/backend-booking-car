@@ -71,29 +71,24 @@ export const getCarReviews = catchAsync(async (req, res) => {
 });
 
 // جلب تقييمات شركة معينة
+import { paginate } from "../helpers/pagination.helper.js";
+
 export const getCompanyReviews = catchAsync(async (req, res) => {
   const { companyId } = req.params;
-  const { page = 1, limit = 10 } = req.query;
-  const skip = (page - 1) * limit;
+  const { page, limit } = req.query;
 
-  const reviews = await Review.find({ company: companyId })
-    .skip(skip)
-    .limit(parseInt(limit))
-    .populate("user", "name")
-    .populate("car", "brand model")
-    .sort({ createdAt: -1 });
-
-  const total = await Review.countDocuments({ company: companyId });
+  const result = await paginate(Review, { company: companyId }, {
+    page,
+    limit,
+    populate: [
+      { path: "user", select: "name" },
+      { path: "car", select: "brand model" }
+    ]
+  });
 
   res.status(200).json({
     success: true,
-    reviews,
-    pagination: {
-      total,
-      page: parseInt(page),
-      limit: parseInt(limit),
-      pages: Math.ceil(total / limit)
-    }
+    ...result
   });
 });
 

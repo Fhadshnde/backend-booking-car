@@ -2,22 +2,18 @@ import Notification from "../models/notification.model.js";
 import catchAsync from "../helpers/catchAsync.js";
 import AppError from "../helpers/AppError.js";
 
-// جلب إشعارات المستخدم الحالي
+import { paginate } from "../helpers/pagination.helper.js";
+
 export const getMyNotifications = catchAsync(async (req, res) => {
-  const { page = 1, limit = 20, unreadOnly } = req.query;
-  const skip = (page - 1) * limit;
+  const { page, limit, unreadOnly } = req.query;
 
   let filter = { user: req.user._id };
   if (unreadOnly === "true") {
     filter.isRead = false;
   }
 
-  const notifications = await Notification.find(filter)
-    .skip(skip)
-    .limit(parseInt(limit))
-    .sort({ createdAt: -1 });
+  const result = await paginate(Notification, filter, { page, limit });
 
-  const total = await Notification.countDocuments(filter);
   const unreadCount = await Notification.countDocuments({
     user: req.user._id,
     isRead: false
@@ -25,14 +21,8 @@ export const getMyNotifications = catchAsync(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    notifications,
     unreadCount,
-    pagination: {
-      total,
-      page: parseInt(page),
-      limit: parseInt(limit),
-      pages: Math.ceil(total / limit)
-    }
+    ...result
   });
 });
 

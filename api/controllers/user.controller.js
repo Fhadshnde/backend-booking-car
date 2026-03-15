@@ -39,30 +39,24 @@ export const updateUserProfile = async (req, res) => {
   }
 };
 
+import { paginate } from "../helpers/pagination.helper.js";
+
 export const getUsers = async (req, res) => {
   try {
-    const { page = 1, limit = 10, role } = req.query;
-    const skip = (page - 1) * limit;
+    const { page, limit, role } = req.query;
 
     let filter = {};
     if (role) filter.role = role;
 
-    const users = await User.find(filter)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .select("-password");
-
-    const total = await User.countDocuments(filter);
+    const result = await paginate(User, filter, {
+      page,
+      limit,
+      select: "-password"
+    });
 
     res.status(200).json({
       success: true,
-      users,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / limit)
-      }
+      ...result
     });
   } catch (error) {
     res.status(500).json({

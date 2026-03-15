@@ -65,10 +65,23 @@ app.use((err, req, res, next) => {
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
+
+
 });
 
+
+// Start server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
 export default app;
 
-app.listen(process.env.PORT, () => {
-  console.log(`Server is running on port ${process.env.PORT}`);
+app.get("/api/test-db", async (req, res) => {
+  try {
+    await mongoose.connection.db.admin().ping();
+    res.json({ success: true, message: "MongoDB connected!" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });

@@ -2,13 +2,21 @@ import mongoose from "mongoose";
 import Car from "../models/car.model.js";
 import Company from "../models/company.model.js";
 import Booking from "../models/booking.model.js";
+import { paginate } from "../helpers/pagination.helper.js";
 
 export const getCars = async (req, res) => {
   try {
-    const { page = 1, limit = 10, isAvailable, categoryId, minPrice, maxPrice, transmission, fuelType, sort } = req.query;
-    const pageNumber = parseInt(page);
-    const limitNumber = parseInt(limit);
-    const skip = (pageNumber - 1) * limitNumber;
+    const { 
+      page, 
+      limit, 
+      isAvailable, 
+      categoryId, 
+      minPrice, 
+      maxPrice, 
+      transmission, 
+      fuelType, 
+      sort 
+    } = req.query;
 
     const filter = { isSuspended: false };
 
@@ -32,26 +40,20 @@ export const getCars = async (req, res) => {
     let sortOptions = { createdAt: -1 };
     if (sort === "price_asc") sortOptions = { pricePerDay: 1 };
     if (sort === "price_desc") sortOptions = { pricePerDay: -1 };
-    if (sort === "rating") sortOptions = { rating: -1 };
 
-    const [cars, total] = await Promise.all([
-      Car.find(filter)
-        .sort(sortOptions)
-        .skip(skip)
-        .limit(limitNumber)
-        .populate("companyId", "name rating city")
-        .populate("category", "name icon")
-        .lean(),
-      Car.countDocuments(filter)
-    ]);
+    const result = await paginate(Car, filter, {
+      page,
+      limit,
+      sort: sortOptions,
+      populate: { path: "category", select: "name" }
+    });
 
     res.status(200).json({
       success: true,
-      cars,
-      pagination: { total, page: pageNumber, limit: limitNumber, pages: Math.ceil(total / limitNumber) }
+      ...result
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed to fetch cars" });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
