@@ -13,7 +13,8 @@ import adminRoutes from "./routes/admin.routes.js";
 import commissionRoutes from "./routes/commissionRoutes.js";
 import categoryRoutes from "./routes/category.routes.js";
 import adRoutes from "./routes/ad.routes.js";
-
+import brandRoutes from "./routes/brand.routes.js";
+import favoriteRoutes from "./routes/favorite.routes.js";
 dotenv.config();
 
 const app = express();
@@ -47,7 +48,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/commissions", commissionRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/ads", adRoutes);
-
+app.use("/api/brands", brandRoutes);
+app.use("/api/favorites", favoriteRoutes);
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ success: true, message: "Server is running" });

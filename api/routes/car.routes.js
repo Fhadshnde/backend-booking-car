@@ -11,7 +11,8 @@ import {
   getCarsByCompany,
   getHomeCars,
   toggleCarAvailability,
-  getCompanyAnalytics
+  getCompanyAnalytics,
+  getCarsByBrand
 } from "../controllers/car.controller.js";
 
 import { protect } from "../middleware/auth.middleware.js";
@@ -72,4 +73,6 @@ router.delete(
   deleteCar
 );
 
+router.get("/brand/:brandId", protect, getCarsByBrand);
 export default router;
+

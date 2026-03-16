@@ -2,7 +2,11 @@ import mongoose from "mongoose";
 
 const carSchema = new mongoose.Schema(
   {
-    brand: { type: String, required: true },
+    brand: { 
+      type: mongoose.Schema.ObjectId, 
+      ref: "Brand", 
+      required: true 
+    },
     model: { type: String, required: true },
     year: { type: Number, required: true },
     licensePlate: { type: String, required: true, unique: true },
@@ -11,7 +15,8 @@ const carSchema = new mongoose.Schema(
       type: mongoose.Schema.ObjectId, 
       ref: "Category", 
       required: true 
-    },    pricePerDay: { type: Number, required: true },
+    },
+    pricePerDay: { type: Number, required: true },
     discountPrice: { type: Number, default: 0 },
     offerEndsAt: { type: Date },
     color: String,
