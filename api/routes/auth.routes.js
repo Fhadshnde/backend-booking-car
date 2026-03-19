@@ -4,9 +4,9 @@ import { protect } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-router.post("/register", register);   // تسجيل مستخدم جديد
-router.post("/login", login);         // تسجيل الدخول
-router.get("/me", protect, getCurrentUser);   // بيانات المستخدم الحالي
-router.put("/change-password", protect, changePassword); // تغيير كلمة المرور
+router.post("/register", register);  
+router.post("/login", login);        
+router.get("/me", protect, getCurrentUser);   
+router.put("/change-password", protect, changePassword);
 
 export default router;
