@@ -12,7 +12,8 @@ import {
   getHomeCars,
   toggleCarAvailability,
   getCompanyAnalytics,
-  getCarsByBrand
+  getCarsByBrand, getRecommendedCars
+
 } from "../controllers/car.controller.js";
 
 import { protect } from "../middleware/auth.middleware.js";
@@ -31,6 +32,7 @@ export const restrictTo = (...roles) => {
 const router = express.Router();
 
 router.get("/home/cars", getHomeCars);
+router.get("/recommended", getRecommendedCars);
 
 router.get("/search", protect, searchCars);
 

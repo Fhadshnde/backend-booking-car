@@ -5,6 +5,7 @@ import Booking from "../models/booking.model.js";
 import Brand from "../models/brand.model.js";
 import { paginate } from "../helpers/pagination.helper.js";
 
+
 export const getCars = async (req, res) => {
   try {
     const { 
@@ -57,6 +58,28 @@ export const getCars = async (req, res) => {
     res.status(200).json({
       success: true,
       ...result
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getRecommendedCars = async (req, res) => {
+  try {
+    const cars = await Car.find({
+      isAvailable: true,
+      isSuspended: false
+    })
+      .sort({ totalBookings: -1, rating: -1 })
+      .limit(8)
+      .populate("companyId", "name rating")
+      .populate("category", "name icon")
+      .populate("brand", "name logo")
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      cars
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
