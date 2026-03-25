@@ -35,6 +35,8 @@ const bookingSchema = new mongoose.Schema(
     insurance: { type: Boolean, default: false },
     insurancePrice: { type: Number, default: 0 },
     
+    walletDiscount: { type: Number, default: 0 },
+    
     cancellationReason: String,
     cancelledAt: Date,
     cancelledBy: { type: String, enum: ["user", "company", "admin"] },
