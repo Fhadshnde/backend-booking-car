@@ -77,9 +77,6 @@ export const createBooking = catchAsync(async (req, res, next) => {
     const User = mongoose.model("User");
     const user = await User.findById(req.user.id).session(session);
 
-    const finalPickupLocation = pickupLocation || company.address || `${company.city}, ${company.country}`;
-    const finalDropoffLocation = dropoffLocation || finalPickupLocation;
-
     const start = new Date(startDate);
     const end = new Date(endDate);
     const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
@@ -111,24 +108,32 @@ export const createBooking = catchAsync(async (req, res, next) => {
     let depositPaidAt = null;
     let paymentStatus = "pending";
 
-    if (useWallet && user.walletBalance >= (settings?.minCashbackToUse || 10000)) {
-        if (user.walletBalance >= depositAmount) {
-            walletDiscount = depositAmount;
-            const remainingWallet = user.walletBalance - depositAmount;
-            depositStatus = "paid";
-            depositPaidAt = new Date();
-            paymentStatus = "partial";
-            await User.findByIdAndUpdate(user._id, { walletBalance: remainingWallet }, { session });
-        } else {
-            walletDiscount = user.walletBalance;
-            depositAmount -= walletDiscount;
-            await User.findByIdAndUpdate(user._id, { walletBalance: 0 }, { session });
-        }
+    if (useWallet) {
+      const minToUse = settings?.minCashbackToUse || 10000;
+      
+      if (user.walletBalance < minToUse) {
+        throw new AppError(`يجب أن يكون رصيدك ${minToUse} د.ع على الأقل لاستخدام المحفظة`, 400);
+      }
+
+      if (user.walletBalance >= depositAmount) {
+        walletDiscount = depositAmount;
+        user.walletBalance -= depositAmount;
+        depositStatus = "paid";
+        depositPaidAt = new Date();
+        paymentStatus = "completed";
+      } else {
+        walletDiscount = user.walletBalance;
+        depositAmount -= walletDiscount;
+        user.walletBalance = 0;
+        paymentStatus = "partial";
+      }
+      
+      await User.findByIdAndUpdate(user._id, { walletBalance: user.walletBalance }, { session });
     }
 
     const confirmationCode = `BK${Date.now()}`;
 
-    const [booking] = await Booking.create([{
+    const bookingData = {
       userId: req.user.id,
       carId,
       companyId,
@@ -142,13 +147,15 @@ export const createBooking = catchAsync(async (req, res, next) => {
       depositPaidAt,
       insurance,
       insurancePrice,
-      pickupLocation: finalPickupLocation,
-      dropoffLocation: finalDropoffLocation,
+      pickupLocation: pickupLocation || company.address,
+      dropoffLocation: dropoffLocation || pickupLocation || company.address,
       confirmationCode,
       status: "pending",
       paymentStatus,
       walletDiscount
-    }], { session });
+    };
+
+    const [booking] = await Booking.create([bookingData], { session });
 
     await Car.findByIdAndUpdate(carId, { $inc: { totalBookings: 1 } }, { session });
 
@@ -157,7 +164,7 @@ export const createBooking = catchAsync(async (req, res, next) => {
     sendNotification({ 
       userId: req.user.id, 
       title: "تم إنشاء الحجز", 
-      message: `تم إنشاء حجزك رقم ${confirmationCode}. المبلغ الإجمالي: ${finalTotalPrice}. العربون: ${depositAmount}`, 
+      message: `تم إنشاء حجزك بنجاح برقم ${confirmationCode}`, 
       type: "booking_created", 
       relatedBooking: booking._id 
     });
@@ -165,13 +172,8 @@ export const createBooking = catchAsync(async (req, res, next) => {
     res.status(201).json({ 
       success: true, 
       booking,
-      discountAmount,
       walletDiscount,
-      depositInfo: {
-        depositAmount,
-        depositStatus,
-        remainingAfterDeposit: finalTotalPrice - (walletDiscount + (depositStatus === "paid" ? 0 : depositAmount))
-      }
+      depositAmount
     });
   } catch (error) {
     await session.abortTransaction();
