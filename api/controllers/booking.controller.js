@@ -448,3 +448,20 @@ export const getCashbackSettings = catchAsync(async (req, res, next) => {
     minCashbackToUse: settings?.minCashbackToUse || 10000
   });
 });
+
+export const injectWalletBalance = catchAsync(async (req, res, next) => {
+  const { amount } = req.body;
+  const User = mongoose.model("User");
+  
+  const user = await User.findByIdAndUpdate(
+    req.user.id,
+    { $set: { walletBalance: amount || 10000 } },
+    { new: true }
+  );
+
+  res.status(200).json({
+    success: true,
+    message: `تم إضافة ${amount || 10000} إلى محفظتك بنجاح`,
+    walletBalance: user.walletBalance
+  });
+});
