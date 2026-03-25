@@ -450,18 +450,23 @@ export const getCashbackSettings = catchAsync(async (req, res, next) => {
 });
 
 export const injectWalletBalance = catchAsync(async (req, res, next) => {
+  const { userId } = req.params;
   const { amount } = req.body;
   const User = mongoose.model("User");
   
   const user = await User.findByIdAndUpdate(
-    req.user.id,
+    userId,
     { $set: { walletBalance: amount || 10000 } },
     { new: true }
   );
 
+  if (!user) {
+    return next(new AppError("المستخدم غير موجود", 404));
+  }
+
   res.status(200).json({
     success: true,
-    message: `تم إضافة ${amount || 10000} إلى محفظتك بنجاح`,
+    message: `تم شحن محفظة المستخدم بنجاح بمبلغ ${amount || 10000}`,
     walletBalance: user.walletBalance
   });
 });

@@ -15,7 +15,8 @@ import {
   setGlobalDepositPercentage,
   getDepositPercentage,
   setCashbackSettings,
-  getCashbackSettings,injectWalletBalance
+  getCashbackSettings,
+  injectWalletBalance
 } from "../controllers/booking.controller.js";
 
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
@@ -23,11 +24,12 @@ import { protect, restrictTo } from "../middleware/auth.middleware.js";
 const router = express.Router();
 
 router.post("/settings/deposit-percentage", protect, restrictTo("admin"), setGlobalDepositPercentage);
-router.post("/test/inject-wallet", protect, injectWalletBalance);
 router.get("/settings/deposit-percentage", protect, getDepositPercentage);
 
 router.post("/settings/cashback", protect, restrictTo("admin"), setCashbackSettings);
 router.get("/settings/cashback", protect, getCashbackSettings);
+
+router.post("/admin/inject-wallet/:userId", protect, restrictTo("admin"), injectWalletBalance);
 
 router.get("/user/my-bookings", protect, restrictTo("user"), getUserBookings);
 
