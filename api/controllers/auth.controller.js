@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: "7d"
+    expiresIn: process.env.JWT_EXPIRE || "7d"
   });
 };
 
@@ -22,6 +22,23 @@ export const register = async (req, res) => {
       });
     }
 
+    // منع التسجيل كـ Admin من خلال الـ API
+    if (role === "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "لا يمكن إنشاء حساب بصلاحية مسؤول"
+      });
+    }
+
+    // التحقق من الأدوار المسموحة
+    const allowedRoles = ["user", "company"];
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "الدور يجب أن يكون user أو company"
+      });
+    }
+
     const existingUser = await User.findOne({ phone });
     if (existingUser) {
       return res.status(400).json({
@@ -30,7 +47,7 @@ export const register = async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     const user = await User.create({
       name,
@@ -53,10 +70,10 @@ export const register = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error("Registration error:", error);
     res.status(500).json({
       success: false,
-      message: "Registration failed",
-      error: error.message
+      message: "Registration failed"
     });
   }
 };
@@ -82,6 +99,13 @@ export const login = async (req, res) => {
       });
     }
 
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "تم تعطيل حسابك. تواصل مع الإدارة"
+      });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({
@@ -89,6 +113,10 @@ export const login = async (req, res) => {
         message: "Invalid phone or password"
       });
     }
+
+    // تحديث آخر تسجيل دخول
+    user.lastLogin = new Date();
+    await user.save({ validateBeforeSave: false });
 
     const token = generateToken(user._id);
 
@@ -99,15 +127,16 @@ export const login = async (req, res) => {
         id: user._id,
         name: user.name,
         phone: user.phone,
-        role: user.role
+        role: user.role,
+        companyId: user.companyId
       }
     });
 
   } catch (error) {
+    console.error("Login error:", error);
     res.status(500).json({
       success: false,
-      message: "Login failed",
-      error: error.message
+      message: "Login failed"
     });
   }
 };
@@ -120,6 +149,7 @@ export const getCurrentUser = async (req, res) => {
     }
     res.status(200).json({ success: true, user });
   } catch (error) {
+    console.error("Get current user error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch user" });
   }
 };
@@ -133,6 +163,10 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({ success: false, message: "All fields are required" });
     }
 
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" });
+    }
+
     const user = await User.findById(req.user.id).select("+password");
     
     const isMatch = await bcrypt.compare(oldPassword, user.password);
@@ -140,11 +174,12 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({ success: false, message: "Old password is incorrect" });
     }
 
-    user.password = await bcrypt.hash(newPassword, 10);
+    user.password = await bcrypt.hash(newPassword, 12);
     await user.save();
 
     res.status(200).json({ success: true, message: "Password changed successfully" });
   } catch (error) {
+    console.error("Change password error:", error);
     res.status(500).json({ success: false, message: "Failed to change password" });
   }
 };

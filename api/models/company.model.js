@@ -44,8 +44,7 @@ const companySchema = new mongoose.Schema(
     },
 
     isActive: { type: Boolean, default: true },
-    approvedAt: Date,
-    createdAt: { type: Date, default: Date.now }
+    approvedAt: Date
   },
   { timestamps: true }
 );

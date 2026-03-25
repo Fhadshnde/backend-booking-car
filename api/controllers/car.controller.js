@@ -60,7 +60,7 @@ export const getCars = async (req, res) => {
       ...result
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "فشل في جلب البيانات" });
   }
 };
 
@@ -82,7 +82,7 @@ export const getRecommendedCars = async (req, res) => {
       cars
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "فشل في جلب السيارات الموصى بها" });
   }
 };
 
@@ -96,7 +96,7 @@ export const getCar = async (req, res) => {
     if (!car) return res.status(404).json({ success: false, message: "Car not found" });
     res.status(200).json({ success: true, car });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed to fetch car" });
+    res.status(500).json({ success: false, message: "Failed to fetch car" });
   }
 };
 
@@ -112,7 +112,7 @@ export const createCar = async (req, res) => {
     await Company.findByIdAndUpdate(data.companyId, { $inc: { totalCars: 1 } });
     res.status(201).json({ success: true, message: "Car created successfully", car });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed to create car" });
+    res.status(500).json({ success: false, message: "Failed to create car" });
   }
 };
 
@@ -127,7 +127,7 @@ export const updateCar = async (req, res) => {
     await car.save();
     res.status(200).json({ success: true, message: "Car updated successfully", car });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed to update car" });
+    res.status(500).json({ success: false, message: "Failed to update car" });
   }
 };
 
@@ -144,7 +144,7 @@ export const deleteCar = async (req, res) => {
     ]);
     res.status(200).json({ success: true, message: "Car deleted successfully" });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed to delete car" });
+    res.status(500).json({ success: false, message: "Failed to delete car" });
   }
 };
 
@@ -215,7 +215,7 @@ export const searchCars = async (req, res) => {
   } catch (error) {
     res.status(500).json({ 
       success: false, 
-      message: error.message || "Failed to search cars" 
+      message: "Failed to search cars" 
     });
   }
 };
@@ -232,7 +232,7 @@ export const getCarDetails = async (req, res) => {
       .populate("userId", "name avatar").select("rating review createdAt").sort({ createdAt: -1 }).lean();
     res.status(200).json({ success: true, car, reviews });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed to fetch car details" });
+    res.status(500).json({ success: false, message: "Failed to fetch car details" });
   }
 };
 
@@ -259,7 +259,7 @@ export const getCarAvailability = async (req, res) => {
     
     res.status(200).json({ success: true, isAvailable: conflicts.length === 0 && car.isAvailable && !car.isSuspended });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed to check availability" });
+    res.status(500).json({ success: false, message: "Failed to check availability" });
   }
 };
 
@@ -273,7 +273,7 @@ export const getHomeCars = async (req, res) => {
     ]);
     res.status(200).json({ success: true, data: { topRated, cheapest, newest } });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed" });
+    res.status(500).json({ success: false, message: "Failed to fetch home cars" });
   }
 };
 
@@ -288,7 +288,7 @@ export const toggleCarAvailability = async (req, res) => {
     await car.save();
     res.status(200).json({ success: true, isAvailable: car.isAvailable });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed" });
+    res.status(500).json({ success: false, message: "Failed to toggle availability" });
   }
 };
 
@@ -307,7 +307,7 @@ export const getCompanyAnalytics = async (req, res) => {
     ]);
     res.status(200).json({ success: true, analytics: stats[0] || {}, inventoryDistribution: carStats });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed" });
+    res.status(500).json({ success: false, message: "Failed to fetch analytics" });
   }
 };
 
@@ -357,7 +357,7 @@ export const getCarsByCompany = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message || "Failed to fetch company cars"
+      message: "Failed to fetch company cars"
     });
   }
 };
@@ -396,6 +396,6 @@ export const getCarsByBrand = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Failed to fetch cars by brand" });
   }
 };

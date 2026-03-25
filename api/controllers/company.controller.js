@@ -71,8 +71,7 @@ export const createCompany = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Failed to create company",
-      error: error.message
+      message: "Failed to create company"
     });
   }
 };

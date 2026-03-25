@@ -4,12 +4,12 @@ import Joi from "joi";
 export const registerSchema = Joi.object({
   name: Joi.string().trim().min(2).max(50).required()
     .messages({ "any.required": "الاسم مطلوب", "string.min": "الاسم يجب أن يكون حرفين على الأقل" }),
-  phone: Joi.string().trim().pattern(/^[0-9+]{8,15}$/).required()
-    .messages({ "any.required": "رقم الهاتف مطلوب", "string.pattern.base": "رقم هاتف غير صحيح" }),
+  phone: Joi.string().trim().pattern(/^[0-9]{10}$/).required()
+    .messages({ "any.required": "رقم الهاتف مطلوب", "string.pattern.base": "رقم الهاتف يجب أن يكون 10 أرقام" }),
   password: Joi.string().min(6).max(128).required()
     .messages({ "any.required": "كلمة المرور مطلوبة", "string.min": "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }),
-  role: Joi.string().valid("user", "company", "admin").required()
-    .messages({ "any.required": "الدور مطلوب", "any.only": "الدور يجب أن يكون user أو company أو admin" })
+  role: Joi.string().valid("user", "company").required()
+    .messages({ "any.required": "الدور مطلوب", "any.only": "الدور يجب أن يكون user أو company" })
 });
 
 export const loginSchema = Joi.object({
@@ -121,7 +121,7 @@ export const createReviewSchema = Joi.object({
 // ============= Profile Schema =============
 export const updateProfileSchema = Joi.object({
   name: Joi.string().trim().min(2).max(50),
-  phone: Joi.string().trim().pattern(/^[0-9+]{8,15}$/),
+  phone: Joi.string().trim().pattern(/^[0-9]{10}$/),
   address: Joi.string().trim().max(200).allow("", null),
   city: Joi.string().trim().max(100).allow("", null),
   country: Joi.string().trim().max(100).allow("", null),

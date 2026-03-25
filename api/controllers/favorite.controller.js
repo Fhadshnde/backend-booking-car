@@ -16,7 +16,7 @@ export const toggleFavorite = async (req, res) => {
     await Favorite.create({ userId, carId });
     res.status(201).json({ success: true, isFavorite: true, message: "Added to favorites" });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -40,6 +40,6 @@ export const getMyFavorites = async (req, res) => {
       cars
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

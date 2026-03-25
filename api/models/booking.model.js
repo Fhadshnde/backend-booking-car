@@ -14,6 +14,7 @@ const bookingSchema = new mongoose.Schema(
 
     deposit: { type: Number, default: 0 }, 
     depositStatus: { type: String, enum: ["pending", "paid", "refunded"], default: "pending" },
+    depositPaidAt: { type: Date },
 
     status: { 
       type: String, 
@@ -43,8 +44,7 @@ const bookingSchema = new mongoose.Schema(
     review: String,
     reviewedAt: Date,
     
-    confirmationCode: { type: String, unique: true },
-    createdAt: { type: Date, default: Date.now }
+    confirmationCode: { type: String, unique: true }
   },
   { timestamps: true }
 );

@@ -22,7 +22,7 @@ export const getAllBrands = async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -46,7 +46,7 @@ export const carInBrand = async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -55,7 +55,7 @@ export const createBrand = async (req, res) => {
     const brand = await Brand.create(req.body);
     res.status(201).json({ success: true, brand });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -67,7 +67,7 @@ export const updateBrand = async (req, res) => {
     }
     res.status(200).json({ success: true, brand });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 }
 
@@ -79,7 +79,7 @@ export const deleteBrand = async (req, res) => {
     }    
     res.status(200).json({ success: true, brand });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 }
 

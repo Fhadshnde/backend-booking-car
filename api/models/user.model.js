@@ -13,8 +13,7 @@ const userSchema = new mongoose.Schema(
     country: String,
     dateOfBirth: Date,
     companyId: { type: mongoose.Schema.ObjectId, ref: "Company" },
-    lastLogin: Date,
-    createdAt: { type: Date, default: Date.now }
+    lastLogin: Date
   },
   { timestamps: true }
 );
