@@ -28,7 +28,6 @@ export const createPaymentIntent = catchAsync(async (req, res, next) => {
   }
 
   const depositAmount = booking.totalPrice * 0.3;
-
   const paymentIntent = await fakeStripe.paymentIntents.create();
 
   res.status(200).json({
@@ -36,15 +35,14 @@ export const createPaymentIntent = catchAsync(async (req, res, next) => {
     clientSecret: paymentIntent.client_secret,
     paymentIntentId: paymentIntent.id,
     amount: depositAmount,
-    currency: "usd",
-    message: "هذه عملية دفع وهمية لغرض التجربة"
+    currency: "usd"
   });
 });
 
 export const confirmPayment = catchAsync(async (req, res, next) => {
   const { bookingId, paymentIntentId } = req.body;
 
-  const booking = await Booking.findById(bookingId);
+  const booking = await Booking.findById(bookingId).populate("companyId");
   if (!booking) {
     return next(new AppError("الحجز غير موجود", 404));
   }
@@ -62,38 +60,30 @@ export const confirmPayment = catchAsync(async (req, res, next) => {
     await sendNotification({
       userId: booking.userId,
       title: "تم دفع العربون",
-      message: `تم تأكيد دفع العربون بنجاح لحجزك رقم ${booking.confirmationCode}. يمكنك الآن رؤية موقع السيارة.`,
+      message: `تم تأكيد دفع العربون بنجاح لحجزك رقم ${booking.confirmationCode}.`,
       type: "payment_received",
       relatedBooking: booking._id
     });
 
     res.status(200).json({
       success: true,
-      message: "تم تأكيد دفع العربون بنجاح (وهمي)",
+      message: "تم تأكيد دفع العربون بنجاح",
       booking
     });
   } else {
-    return next(new AppError("فشلت عملية الدفع الوهمية", 400));
+    return next(new AppError("فشلت عملية الدفع", 400));
   }
 });
 
 export const stripeWebhook = async (req, res) => {
-  res.json({ received: true, mode: "fake_testing" });
+  res.json({ received: true });
 };
 
 export const getPaymentStatus = catchAsync(async (req, res, next) => {
   const { bookingId } = req.params;
-
   const booking = await Booking.findById(bookingId);
   if (!booking) {
     return next(new AppError("الحجز غير موجود", 404));
   }
-
-  res.status(200).json({
-    success: true,
-    paymentStatus: booking.paymentStatus,
-    depositStatus: booking.depositStatus,
-    totalPrice: booking.totalPrice,
-    depositAmount: booking.totalPrice * 0.3
-  });
+  res.status(200).json({ success: true, paymentStatus: booking.paymentStatus });
 });
