@@ -150,24 +150,55 @@ export const deleteCar = async (req, res) => {
 
 export const searchCars = async (req, res) => {
   try {
-    const { brandId, model, categoryId, priceMin, priceMax, fuelType, city } = req.query;
-    
-    let companyFilter = {};
-    if (city) {
-      const companiesInCity = await Company.find({ city: new RegExp(city, "i") }).select("_id");
-      const companyIds = companiesInCity.map(c => c._id);
-      companyFilter.companyId = { $in: companyIds };
+    const { 
+      query, 
+      brand, 
+      category, 
+      minPrice, 
+      maxPrice, 
+      fuelType, 
+      transmission, 
+      city 
+    } = req.query;
+
+    let filter = { 
+      isSuspended: false, 
+      isAvailable: true 
+    };
+
+    if (query) {
+      filter.model = new RegExp(query, "i");
     }
 
-    const filter = { isSuspended: false, isAvailable: true, ...companyFilter };
-    if (brandId) filter.brand = brandId;
-    if (model) filter.model = new RegExp(model, "i");
-    if (categoryId) filter.category = categoryId;
-    if (fuelType) filter.fuelType = fuelType;
-    if (priceMin || priceMax) {
+    if (brand) {
+      filter.brand = brand;
+    }
+
+    if (category) {
+      filter.category = category;
+    }
+
+    if (fuelType) {
+      filter.fuelType = fuelType;
+    }
+
+    if (transmission) {
+      filter.transmission = transmission.toLowerCase();
+    }
+
+    if (minPrice || maxPrice) {
       filter.pricePerDay = {};
-      if (priceMin) filter.pricePerDay.$gte = parseInt(priceMin);
-      if (priceMax) filter.pricePerDay.$lte = parseInt(priceMax);
+      if (minPrice) filter.pricePerDay.$gte = parseInt(minPrice);
+      if (maxPrice) filter.pricePerDay.$lte = parseInt(maxPrice);
+    }
+
+    if (city) {
+      const companiesInCity = await Company.find({ 
+        city: new RegExp(city, "i") 
+      }).select("_id");
+      
+      const companyIds = companiesInCity.map(c => c._id);
+      filter.companyId = { $in: companyIds };
     }
 
     const cars = await Car.find(filter)
@@ -176,9 +207,16 @@ export const searchCars = async (req, res) => {
       .populate("brand", "name logo")
       .lean();
 
-    res.status(200).json({ success: true, count: cars.length, cars });
+    res.status(200).json({ 
+      success: true, 
+      count: cars.length, 
+      cars 
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message || "Failed to search cars" });
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || "Failed to search cars" 
+    });
   }
 };
 
