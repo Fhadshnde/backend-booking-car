@@ -1,7 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 
-// Middleware إجباري - يرفض الطلبات بدون token
 export const protect = async (req, res, next) => {
   try {
     let token;
@@ -55,7 +54,6 @@ export const protect = async (req, res, next) => {
   }
 };
 
-// Middleware اختياري - يسمح بالمرور بدون token لكن يضيف المستخدم إذا وُجد
 export const optionalAuth = async (req, res, next) => {
   try {
     let token;
@@ -64,6 +62,7 @@ export const optionalAuth = async (req, res, next) => {
     }
 
     if (!token) {
+      req.user = null;
       return next();
     }
 
@@ -72,10 +71,13 @@ export const optionalAuth = async (req, res, next) => {
 
     if (user && user.isActive) {
       req.user = user;
+    } else {
+      req.user = null;
     }
 
     next();
   } catch (error) {
+    req.user = null;
     next();
   }
 };
