@@ -103,16 +103,29 @@ export const createBooking = catchAsync(async (req, res, next) => {
     let finalTotalPrice = initialTotalPrice + insurancePrice;
 
     const settings = await Settings.findOne().session(session).lean();
+    const depositPerc = settings?.depositPercentage || 0.3;
+    let depositAmount = Math.round(finalTotalPrice * depositPerc);
     
     let walletDiscount = 0;
+    let depositStatus = "pending";
+    let depositPaidAt = null;
+    let paymentStatus = "pending";
+
     if (useWallet && user.walletBalance >= (settings?.minCashbackToUse || 10000)) {
-        walletDiscount = user.walletBalance;
-        finalTotalPrice = Math.max(0, finalTotalPrice - walletDiscount);
-        await User.findByIdAndUpdate(user._id, { walletBalance: 0 }, { session });
+        if (user.walletBalance >= depositAmount) {
+            walletDiscount = depositAmount;
+            const remainingWallet = user.walletBalance - depositAmount;
+            depositStatus = "paid";
+            depositPaidAt = new Date();
+            paymentStatus = "partial";
+            await User.findByIdAndUpdate(user._id, { walletBalance: remainingWallet }, { session });
+        } else {
+            walletDiscount = user.walletBalance;
+            depositAmount -= walletDiscount;
+            await User.findByIdAndUpdate(user._id, { walletBalance: 0 }, { session });
+        }
     }
 
-    const depositPerc = settings?.depositPercentage || 0.3;
-    const depositAmount = Math.round(finalTotalPrice * depositPerc);
     const confirmationCode = `BK${Date.now()}`;
 
     const [booking] = await Booking.create([{
@@ -125,14 +138,15 @@ export const createBooking = catchAsync(async (req, res, next) => {
       pricePerDay,
       totalPrice: finalTotalPrice,
       deposit: depositAmount,
-      depositStatus: "pending",
+      depositStatus,
+      depositPaidAt,
       insurance,
       insurancePrice,
       pickupLocation: finalPickupLocation,
       dropoffLocation: finalDropoffLocation,
       confirmationCode,
       status: "pending",
-      paymentStatus: "pending",
+      paymentStatus,
       walletDiscount
     }], { session });
 
@@ -143,7 +157,7 @@ export const createBooking = catchAsync(async (req, res, next) => {
     sendNotification({ 
       userId: req.user.id, 
       title: "تم إنشاء الحجز", 
-      message: `تم إنشاء حجزك رقم ${confirmationCode}. المبلغ الإجمالي: ${finalTotalPrice}. العربون المطلوب: ${depositAmount}`, 
+      message: `تم إنشاء حجزك رقم ${confirmationCode}. المبلغ الإجمالي: ${finalTotalPrice}. العربون: ${depositAmount}`, 
       type: "booking_created", 
       relatedBooking: booking._id 
     });
@@ -155,9 +169,8 @@ export const createBooking = catchAsync(async (req, res, next) => {
       walletDiscount,
       depositInfo: {
         depositAmount,
-        depositPercentage: depositPerc * 100,
-        remainingAfterDeposit: finalTotalPrice - depositAmount,
-        message: "يرجى دفع العربون لتأكيد الحجز"
+        depositStatus,
+        remainingAfterDeposit: finalTotalPrice - (walletDiscount + (depositStatus === "paid" ? 0 : depositAmount))
       }
     });
   } catch (error) {
@@ -193,7 +206,7 @@ export const confirmDeposit = catchAsync(async (req, res, next) => {
     sendNotification({ 
       userId: booking.userId, 
       title: "تم تأكيد دفع العربون", 
-      message: `تم تأكيد دفع العربون بمبلغ ${booking.deposit} لحجزك رقم ${booking.confirmationCode}. يمكنك الآن رؤية تفاصيل الشركة.`, 
+      message: `تم تأكيد دفع العربون بمبلغ ${booking.deposit} لحجزك رقم ${booking.confirmationCode}.`, 
       type: "deposit_confirmed", 
       relatedBooking: booking._id 
     });
@@ -334,7 +347,7 @@ export const completePayment = catchAsync(async (req, res, next) => {
   if (!booking) return next(new AppError("الحجز غير موجود", 404));
   if (booking.depositStatus !== "paid") return next(new AppError("يجب دفع العربون أولاً", 400));
 
-  const remainingBalance = booking.totalPrice - booking.deposit;
+  const remainingBalance = booking.totalPrice - (booking.deposit + (booking.walletDiscount || 0));
   if (amountPaid < remainingBalance) {
     return next(new AppError(`المبلغ المدفوع أقل من المتبقي. المتبقي: ${remainingBalance}`, 400));
   }
