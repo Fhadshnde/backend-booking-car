@@ -342,19 +342,57 @@ export const completeBooking = catchAsync(async (req, res, next) => {
 });
 
 export const completePayment = catchAsync(async (req, res, next) => {
-  const { bookingId, amountPaid } = req.body;
-  const booking = await Booking.findById(bookingId);
-  if (!booking) return next(new AppError("الحجز غير موجود", 404));
-  if (booking.depositStatus !== "paid") return next(new AppError("يجب دفع العربون أولاً", 400));
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { bookingId, amountPaid, useWallet } = req.body;
+    const booking = await Booking.findById(bookingId).session(session);
+    if (!booking) throw new AppError("الحجز غير موجود", 404);
+    if (booking.depositStatus !== "paid") throw new AppError("يجب دفع العربون أولاً", 400);
+    if (booking.paymentStatus === "completed") throw new AppError("الحجز مدفوع بالكامل مسبقاً", 400);
 
-  const remainingBalance = booking.totalPrice - (booking.deposit + (booking.walletDiscount || 0));
-  if (amountPaid < remainingBalance) {
-    return next(new AppError(`المبلغ المدفوع أقل من المتبقي. المتبقي: ${remainingBalance}`, 400));
+    const User = mongoose.model("User");
+    const user = await User.findById(booking.userId).session(session);
+    const settings = await Settings.findOne().session(session).lean();
+
+    const alreadyPaid = (booking.deposit || 0) + (booking.walletDiscount || 0);
+    let remainingBalance = booking.totalPrice - alreadyPaid;
+
+    let walletUsedInPayment = 0;
+    if (useWallet && user.walletBalance >= (settings?.minCashbackToUse || 10000)) {
+      if (user.walletBalance >= remainingBalance) {
+        walletUsedInPayment = remainingBalance;
+        remainingBalance = 0;
+      } else {
+        walletUsedInPayment = user.walletBalance;
+        remainingBalance -= walletUsedInPayment;
+      }
+      
+      await User.findByIdAndUpdate(user._id, { $inc: { walletBalance: -walletUsedInPayment } }, { session });
+      booking.walletDiscount = (booking.walletDiscount || 0) + walletUsedInPayment;
+    }
+
+    if (amountPaid < remainingBalance) {
+      throw new AppError(`المبلغ المدفوع أقل من المتبقي. المتبقي المطلوب دفعه نقداً: ${remainingBalance}`, 400);
+    }
+
+    booking.paymentStatus = "completed";
+    await booking.save({ session });
+    
+    await session.commitTransaction();
+
+    res.status(200).json({ 
+        success: true, 
+        booking, 
+        walletUsedInPayment, 
+        cashPaid: amountPaid 
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    next(error);
+  } finally {
+    session.endSession();
   }
-
-  booking.paymentStatus = "completed";
-  await booking.save();
-  res.status(200).json({ success: true, booking });
 });
 
 export const updateBooking = catchAsync(async (req, res, next) => {
