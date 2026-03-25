@@ -55,7 +55,7 @@ export const confirmPayment = catchAsync(async (req, res, next) => {
     booking.paymentStatus = "completed";
     booking.depositStatus = "paid";
     booking.status = "confirmed";
-    booking.paymentMethod = "fake_card";
+    booking.paymentMethod = "credit_card";
     
     await booking.save();
 
