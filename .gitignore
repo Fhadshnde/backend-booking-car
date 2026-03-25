@@ -3,11 +3,9 @@ node_modules/
 npm-debug.log
 yarn-error.log
 
-# Environment variables
+# Environment variables (hide ALL env files)
 .env
-.env.local
-.env.*.local
-.env.example
+.env.*
 
 # IDE
 .vscode/
