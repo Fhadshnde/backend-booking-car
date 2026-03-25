@@ -517,7 +517,7 @@ export const injectWalletBalance = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    message: `تم شحن محفظة المستخدم بنجاح بمبلغ ${amount || 10000}`,
+    message: `تم شحن محفظة المستخدم بنجاح بمبلغ ${amount || 1000}`,
     walletBalance: user.walletBalance
   });
-});
+})
