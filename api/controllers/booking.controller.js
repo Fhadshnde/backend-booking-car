@@ -62,79 +62,83 @@ const hideCompanyIfDepositNotPaid = (booking) => {
   return b;
 };
 
+
 export const createBooking = catchAsync(async (req, res, next) => {
-  const {
-    carId,
-    startDate,
-    endDate,
-    pickupLocation,
-    dropoffLocation,
-    insurance,
-    useWallet,
-    pricePerDay
+  const { 
+    carId, 
+    companyId, 
+    startDate, 
+    endDate, 
+    pickupLocation, 
+    dropoffLocation, 
+    useWallet, 
+    walletAmount, // المبلغ الذي حدده المستخدم من الواجهة
+    insurance 
   } = req.body;
 
   const car = await Car.findById(carId);
-  if (!car) return next(new AppError("السيارة المطلوبة غير موجودة", 404));
+  if (!car) return next(new AppError("السيارة غير موجودة", 404));
 
   const start = new Date(startDate);
   const end = new Date(endDate);
-
-  const overlappingBooking = await Booking.findOne({
-    carId: carId,
-    status: { $in: ["confirmed", "pending", "on_trip"] },
-    $or: [{ startDate: { $lte: end }, endDate: { $gte: start } }]
-  });
-
-  if (overlappingBooking) return next(new AppError("هذه السيارة محجوزة بالفعل في التواريخ المختارة", 400));
-
-  const diffTime = Math.abs(end - start);
-  const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
-  const dailyPrice = Number(pricePerDay) || Number(car.pricePerDay) || 0;
-  const basePrice = totalDays * dailyPrice;
+  const totalDays = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24)) || 1;
+  
+  const basePrice = totalDays * car.pricePerDay;
   const insurancePrice = insurance ? 50000 : 0;
   const totalPrice = basePrice + insurancePrice;
-  
-  const settings = await Settings.findOne().lean();
+
+  const settings = await Settings.findOne();
   const depositPercentage = settings?.depositPercentage || 0.3;
   const totalDepositNeeded = totalPrice * depositPercentage;
 
   let walletDiscount = 0;
-  const userWalletBalance = Number(req.user.walletBalance) || 0;
+  let updatedUser = null;
 
-  if (useWallet === true && userWalletBalance > 0) {
-    walletDiscount = Math.min(totalDepositNeeded, userWalletBalance);
+  if (useWallet && walletAmount > 0) {
+    const user = await mongoose.model("User").findById(req.user.id);
+    
+    // التأكد أن المستخدم يملك المبلغ الذي حدده
+    if (user.walletBalance < walletAmount) {
+      return next(new AppError("رصيد المحفظة غير كافٍ للمبلغ المحدد", 400));
+    }
+
+    // الخصم لا يتجاوز العربون (أو السعر الكامل حسب سياستك، هنا جعلناه لا يتجاوز العربون)
+    walletDiscount = Math.min(walletAmount, totalDepositNeeded);
+
+    updatedUser = await mongoose.model("User").findByIdAndUpdate(
+      req.user.id,
+      { $inc: { walletBalance: -walletDiscount } },
+      { new: true }
+    );
   }
 
-  const finalDepositToPay = Math.max(0, totalDepositNeeded - walletDiscount);
+  const finalDeposit = Math.max(0, totalDepositNeeded - walletDiscount);
+  const confirmationCode = Math.random().toString(36).substring(2, 10).toUpperCase();
 
   const booking = await Booking.create({
-    userId: req.user._id,
+    userId: req.user.id,
     carId,
-    companyId: car.companyId,
-    startDate: start,
-    endDate: end,
+    companyId,
+    startDate,
+    endDate,
     totalDays,
-    pricePerDay: dailyPrice,
+    pricePerDay: car.pricePerDay,
     totalPrice,
-    deposit: finalDepositToPay,
-    walletDiscount: walletDiscount,
+    insurance,
+    insurancePrice,
+    walletDiscount,
+    deposit: finalDeposit,
     pickupLocation,
     dropoffLocation,
-    insurance,
+    confirmationCode,
     status: "pending",
-    confirmationCode: generateConfirmationCode(),
-    paymentMethod: (finalDepositToPay === 0 && walletDiscount > 0) ? "wallet" : "credit_card",
-    depositStatus: (finalDepositToPay === 0 && walletDiscount > 0) ? "paid" : "pending"
+    depositStatus: (walletDiscount >= totalDepositNeeded) ? "paid" : "pending"
   });
 
-  if (walletDiscount > 0) {
-    req.user.walletBalance = Number(req.user.walletBalance) - walletDiscount;
-    await req.user.save();
-  }
-
-  res.status(201).json({ success: true, booking });
+  res.status(201).json({ success: true, booking, user: updatedUser || req.user });
 });
+
+
 
 export const confirmDeposit = catchAsync(async (req, res, next) => {
   const session = await mongoose.startSession();
@@ -323,16 +327,14 @@ export const injectWalletBalance = catchAsync(async (req, res, next) => {
   const { userId } = req.params;
   const { amount } = req.body;
 
-  // التحقق من أن المبلغ رقم صالح
   const amountToAdd = Number(amount);
   if (isNaN(amountToAdd) || amountToAdd <= 0) {
-    return next(new AppError("يرجى إدخال مبلغ صحيح أكبر من صفر", 400));
+    return next(new AppError("يرجى إدخال مبلغ صحيح", 400));
   }
 
-  // استخدام $inc لعملية الإضافة التراكمية (الرصيد القديم + الجديد)
   const user = await mongoose.model("User").findByIdAndUpdate(
     userId,
-    { $inc: { walletBalance: amountToAdd } }, 
+    { $inc: { walletBalance: amountToAdd } },
     { new: true, runValidators: true }
   );
 
@@ -342,7 +344,8 @@ export const injectWalletBalance = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    message: `تمت إضافة ${amountToAdd} إلى رصيد المستخدم بنجاح`,
-    walletBalance: user.walletBalance // سيعيد لك المجموع النهائي بعد الإضافة
+    message: "تم شحن المحفظة بنجاح",
+    walletBalance: user.walletBalance,
+    user
   });
 });
