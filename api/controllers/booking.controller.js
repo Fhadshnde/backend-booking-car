@@ -59,7 +59,12 @@ const hideCompanyIfDepositNotPaid = (booking) => {
 };
 
 
+i
 export const createBooking = catchAsync(async (req, res, next) => {
+  console.log("-----------------------------------------");
+  console.log("🚀 [START] Create Booking Process");
+  console.log("📦 Incoming Request Body:", JSON.stringify(req.body, null, 2));
+
   const {
     carId,
     startDate,
@@ -71,16 +76,37 @@ export const createBooking = catchAsync(async (req, res, next) => {
     pricePerDay
   } = req.body;
 
+  // 1. التحقق من وجود السيارة
   const car = await Car.findById(carId);
   if (!car) {
+    console.log("❌ Error: Car not found");
     return next(new AppError("السيارة المطلوبة غير موجودة", 404));
   }
+  console.log("✅ Car Found:", car.brand, car.model);
 
+  // 2. التحقق من توفر السيارة في التواريخ المطلوبة
   const start = new Date(startDate);
   const end = new Date(endDate);
+
+  console.log(`📅 Checking availability from ${start.toISOString()} to ${end.toISOString()}`);
+
+  const overlappingBooking = await Booking.findOne({
+    carId: carId,
+    status: { $in: ["confirmed", "pending", "on_trip"] },
+    $or: [
+      { startDate: { $lte: end }, endDate: { $gte: start } }
+    ]
+  });
+
+  if (overlappingBooking) {
+    console.log("❌ Error: Car already booked for these dates");
+    return next(new AppError("عذراً، هذه السيارة محجوزة بالفعل في التواريخ المختارة", 400));
+  }
+  console.log("✅ Car is available for these dates");
+
+  // 3. العمليات الحسابية
   const diffTime = Math.abs(end - start);
   const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
-
   const dailyPrice = parseFloat(pricePerDay) || car.pricePerDay || 0;
   const basePrice = totalDays * dailyPrice;
   const insurancePrice = insurance ? 50000 : 0;
@@ -89,18 +115,28 @@ export const createBooking = catchAsync(async (req, res, next) => {
   const depositPercentage = 0.3; 
   const totalDepositNeeded = totalPrice * depositPercentage;
 
+  console.log(`📊 Calculations: Days: ${totalDays}, Daily: ${dailyPrice}, Total: ${totalPrice}, Deposit Needed: ${totalDepositNeeded}`);
+
+  // 4. منطق المحفظة (الكاش باك)
   let walletDiscount = 0;
+  console.log(`💰 User Wallet Balance: ${req.user.walletBalance}`);
+  
   if (useWallet && req.user.walletBalance > 0) {
     walletDiscount = Math.min(totalDepositNeeded, req.user.walletBalance);
+    console.log(`✅ Applying Wallet Discount: ${walletDiscount}`);
   }
 
   const finalDeposit = Math.max(0, totalDepositNeeded - walletDiscount);
+  console.log(`💵 Final Deposit to Pay: ${finalDeposit}`);
 
+  // 5. التحقق من صحة الأرقام (الوقاية من NaN)
   if (isNaN(finalDeposit) || isNaN(totalPrice)) {
+    console.log("❌ Error: Calculation resulted in NaN");
     return next(new AppError("خطأ في حساب مبالغ الحجز، يرجى المحاولة مرة أخرى", 400));
   }
 
-  const booking = await Booking.create({
+  // 6. إنشاء الحجز
+  const bookingData = {
     userId: req.user._id,
     carId,
     companyId: car.companyId,
@@ -117,12 +153,20 @@ export const createBooking = catchAsync(async (req, res, next) => {
     status: "pending",
     paymentMethod: (useWallet && finalDeposit === 0) ? "wallet" : "credit_card",
     depositStatus: (useWallet && finalDeposit === 0) ? "paid" : "pending"
-  });
+  };
 
+  const booking = await Booking.create(bookingData);
+  console.log("✅ Booking Document Created:", booking._id);
+
+  // 7. خصم المبلغ من المحفظة إذا تم استخدامه
   if (useWallet && walletDiscount > 0) {
     req.user.walletBalance -= walletDiscount;
     await req.user.save();
+    console.log(`📉 Wallet balance updated. New Balance: ${req.user.walletBalance}`);
   }
+
+  console.log("✨ [END] Booking Success");
+  console.log("-----------------------------------------");
 
   res.status(201).json({
     success: true,
