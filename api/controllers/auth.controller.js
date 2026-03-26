@@ -16,35 +16,21 @@ export const register = async (req, res) => {
     const role = req.body.role;
 
     if (!name || !phone || !password || !role) {
-      return res.status(400).json({
-        success: false,
-        message: "All fields are required"
-      });
+      return res.status(400).json({ success: false, message: "All fields are required" });
     }
 
-    // منع التسجيل كـ Admin من خلال الـ API
     if (role === "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "لا يمكن إنشاء حساب بصلاحية مسؤول"
-      });
+      return res.status(403).json({ success: false, message: "لا يمكن إنشاء حساب بصلاحية مسؤول" });
     }
 
-    // التحقق من الأدوار المسموحة
     const allowedRoles = ["user", "company"];
     if (!allowedRoles.includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: "الدور يجب أن يكون user أو company"
-      });
+      return res.status(400).json({ success: false, message: "الدور يجب أن يكون user أو company" });
     }
 
     const existingUser = await User.findOne({ phone });
     if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "User with this phone already exists"
-      });
+      return res.status(400).json({ success: false, message: "User with this phone already exists" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -66,15 +52,12 @@ export const register = async (req, res) => {
         id: user._id,
         name: user.name,
         phone: user.phone,
-        role: user.role
+        role: user.role,
+        walletBalance: user.walletBalance
       }
     });
   } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Registration failed"
-    });
+    res.status(500).json({ success: false, message: "Registration failed" });
   }
 };
 
@@ -84,42 +67,23 @@ export const login = async (req, res) => {
     const password = req.body.password?.trim();
 
     if (!phone || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Phone and password are required"
-      });
+      return res.status(400).json({ success: false, message: "Phone and password are required" });
     }
 
     const user = await User.findOne({ phone }).select("+password");
     
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid phone or password"
-      });
-    }
-
-    if (!user.isActive) {
-      return res.status(403).json({
-        success: false,
-        message: "تم تعطيل حسابك. تواصل مع الإدارة"
-      });
+      return res.status(401).json({ success: false, message: "Invalid phone or password" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid phone or password"
-      });
+      return res.status(401).json({ success: false, message: "Invalid phone or password" });
     }
-
-    // تحديث آخر تسجيل دخول
-    user.lastLogin = new Date();
-    await user.save({ validateBeforeSave: false });
 
     const token = generateToken(user._id);
 
+    // التعديل هنا: أضف walletBalance داخل كائن user
     res.status(200).json({
       success: true,
       token,
@@ -128,16 +92,12 @@ export const login = async (req, res) => {
         name: user.name,
         phone: user.phone,
         role: user.role,
-        companyId: user.companyId
+        companyId: user.companyId,
+        walletBalance: user.walletBalance || 0 // سيظهر المبلغ هنا
       }
     });
-
   } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Login failed"
-    });
+    res.status(500).json({ success: false, message: "Login failed" });
   }
 };
 
@@ -149,7 +109,6 @@ export const getCurrentUser = async (req, res) => {
     }
     res.status(200).json({ success: true, user });
   } catch (error) {
-    console.error("Get current user error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch user" });
   }
 };
@@ -163,12 +122,7 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({ success: false, message: "All fields are required" });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" });
-    }
-
     const user = await User.findById(req.user.id).select("+password");
-    
     const isMatch = await bcrypt.compare(oldPassword, user.password);
     if (!isMatch) {
       return res.status(400).json({ success: false, message: "Old password is incorrect" });
@@ -179,7 +133,6 @@ export const changePassword = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Password changed successfully" });
   } catch (error) {
-    console.error("Change password error:", error);
     res.status(500).json({ success: false, message: "Failed to change password" });
   }
 };

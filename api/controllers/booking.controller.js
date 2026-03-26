@@ -322,6 +322,27 @@ export const getCashbackSettings = catchAsync(async (req, res, next) => {
 export const injectWalletBalance = catchAsync(async (req, res, next) => {
   const { userId } = req.params;
   const { amount } = req.body;
-  const user = await mongoose.model("User").findByIdAndUpdate(userId, { $set: { walletBalance: Number(amount) || 0 } }, { new: true });
-  res.status(200).json({ success: true, walletBalance: user.walletBalance });
+
+  // التحقق من أن المبلغ رقم صالح
+  const amountToAdd = Number(amount);
+  if (isNaN(amountToAdd) || amountToAdd <= 0) {
+    return next(new AppError("يرجى إدخال مبلغ صحيح أكبر من صفر", 400));
+  }
+
+  // استخدام $inc لعملية الإضافة التراكمية (الرصيد القديم + الجديد)
+  const user = await mongoose.model("User").findByIdAndUpdate(
+    userId,
+    { $inc: { walletBalance: amountToAdd } }, 
+    { new: true, runValidators: true }
+  );
+
+  if (!user) {
+    return next(new AppError("المستخدم غير موجود", 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: `تمت إضافة ${amountToAdd} إلى رصيد المستخدم بنجاح`,
+    walletBalance: user.walletBalance // سيعيد لك المجموع النهائي بعد الإضافة
+  });
 });
