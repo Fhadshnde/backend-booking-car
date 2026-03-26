@@ -58,129 +58,76 @@ const hideCompanyIfDepositNotPaid = (booking) => {
   return b;
 };
 
+
 export const createBooking = catchAsync(async (req, res, next) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    const { carId, companyId, startDate, endDate, pickupLocation, dropoffLocation, insurance, adId, useWallet } = req.body;
+  const {
+    carId,
+    startDate,
+    endDate,
+    pickupLocation,
+    dropoffLocation,
+    insurance,
+    useWallet,
+    pricePerDay
+  } = req.body;
 
-    const car = await Car.findById(carId).session(session);
-    if (!car || car.isSuspended || !car.isAvailable) {
-      throw new AppError("السيارة غير متاحة حالياً", 400);
-    }
-
-    const company = await Company.findById(companyId).session(session);
-    if (!company) {
-      throw new AppError("الشركة غير موجودة", 404);
-    }
-
-    const User = mongoose.model("User");
-    const user = await User.findById(req.user.id).session(session);
-
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-    if (totalDays <= 0) throw new AppError("التواريخ غير صحيحة", 400);
-
-    let pricePerDay = car.pricePerDay;
-    let initialTotalPrice = pricePerDay * totalDays;
-    let discountAmount = 0;
-
-    if (adId) {
-      const ad = await Ad.findById(adId).session(session);
-      if (ad && ad.isActive && ad.carIds.some(id => id.toString() === carId.toString())) {
-        if (ad.discountPercentage > 0) {
-          discountAmount = initialTotalPrice * (ad.discountPercentage / 100);
-          initialTotalPrice -= discountAmount;
-        }
-      }
-    }
-
-    const insurancePrice = insurance ? car.pricePerDay * 0.1 * totalDays : 0;
-    let finalTotalPrice = initialTotalPrice + insurancePrice;
-
-    const settings = await Settings.findOne().session(session).lean();
-    const depositPerc = settings?.depositPercentage || 0.3;
-    let depositAmount = Math.round(finalTotalPrice * depositPerc);
-    
-    let walletDiscount = 0;
-    let depositStatus = "pending";
-    let depositPaidAt = null;
-    let paymentStatus = "pending";
-
-    if (useWallet) {
-      const minToUse = settings?.minCashbackToUse || 10000;
-      
-      if (user.walletBalance < minToUse) {
-        throw new AppError(`يجب أن يكون رصيدك ${minToUse} د.ع على الأقل لاستخدام المحفظة`, 400);
-      }
-
-      if (user.walletBalance >= depositAmount) {
-        walletDiscount = depositAmount;
-        user.walletBalance -= depositAmount;
-        depositStatus = "paid";
-        depositPaidAt = new Date();
-        paymentStatus = "completed";
-      } else {
-        walletDiscount = user.walletBalance;
-        depositAmount -= walletDiscount;
-        user.walletBalance = 0;
-        paymentStatus = "partial";
-      }
-      
-      await User.findByIdAndUpdate(user._id, { walletBalance: user.walletBalance }, { session });
-    }
-
-    const confirmationCode = `BK${Date.now()}`;
-
-    const bookingData = {
-      userId: req.user.id,
-      carId,
-      companyId,
-      startDate: start,
-      endDate: end,
-      totalDays,
-      pricePerDay,
-      totalPrice: finalTotalPrice,
-      deposit: depositAmount,
-      depositStatus,
-      depositPaidAt,
-      insurance,
-      insurancePrice,
-      pickupLocation: pickupLocation || company.address,
-      dropoffLocation: dropoffLocation || pickupLocation || company.address,
-      confirmationCode,
-      status: "pending",
-      paymentStatus,
-      walletDiscount
-    };
-
-    const [booking] = await Booking.create([bookingData], { session });
-
-    await Car.findByIdAndUpdate(carId, { $inc: { totalBookings: 1 } }, { session });
-
-    await session.commitTransaction();
-
-    sendNotification({ 
-      userId: req.user.id, 
-      title: "تم إنشاء الحجز", 
-      message: `تم إنشاء حجزك بنجاح برقم ${confirmationCode}`, 
-      type: "booking_created", 
-      relatedBooking: booking._id 
-    });
-
-    res.status(201).json({ 
-      success: true, 
-      booking,
-      walletDiscount,
-      depositAmount
-    });
-  } catch (error) {
-    await session.abortTransaction();
-    next(error);
-  } finally {
-    session.endSession();
+  const car = await Car.findById(carId);
+  if (!car) {
+    return next(new AppError("السيارة المطلوبة غير موجودة", 404));
   }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffTime = Math.abs(end - start);
+  const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+
+  const dailyPrice = parseFloat(pricePerDay) || car.pricePerDay || 0;
+  const basePrice = totalDays * dailyPrice;
+  const insurancePrice = insurance ? 50000 : 0;
+  const totalPrice = basePrice + insurancePrice;
+  
+  const depositPercentage = 0.3; 
+  const totalDepositNeeded = totalPrice * depositPercentage;
+
+  let walletDiscount = 0;
+  if (useWallet && req.user.walletBalance > 0) {
+    walletDiscount = Math.min(totalDepositNeeded, req.user.walletBalance);
+  }
+
+  const finalDeposit = Math.max(0, totalDepositNeeded - walletDiscount);
+
+  if (isNaN(finalDeposit) || isNaN(totalPrice)) {
+    return next(new AppError("خطأ في حساب مبالغ الحجز، يرجى المحاولة مرة أخرى", 400));
+  }
+
+  const booking = await Booking.create({
+    userId: req.user._id,
+    carId,
+    companyId: car.companyId,
+    startDate: start,
+    endDate: end,
+    totalDays,
+    pricePerDay: dailyPrice,
+    totalPrice,
+    deposit: finalDeposit,
+    walletDiscount,
+    pickupLocation,
+    dropoffLocation,
+    insurance,
+    status: "pending",
+    paymentMethod: (useWallet && finalDeposit === 0) ? "wallet" : "credit_card",
+    depositStatus: (useWallet && finalDeposit === 0) ? "paid" : "pending"
+  });
+
+  if (useWallet && walletDiscount > 0) {
+    req.user.walletBalance -= walletDiscount;
+    await req.user.save();
+  }
+
+  res.status(201).json({
+    success: true,
+    booking
+  });
 });
 
 export const confirmDeposit = catchAsync(async (req, res, next) => {
