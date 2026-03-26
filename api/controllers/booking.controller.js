@@ -14,6 +14,10 @@ const SettingsSchema = new mongoose.Schema({
 });
 export const Settings = mongoose.model("Settings", SettingsSchema);
 
+const generateConfirmationCode = () => {
+  return Math.random().toString(36).substring(2, 10).toUpperCase();
+};
+
 const paginateAndPopulate = async ({ filter, page = 1, limit = 10, populateOptions = [] }) => {
   const pageNumber = Math.max(1, parseInt(page));
   const limitNumber = Math.max(1, parseInt(limit));
@@ -58,13 +62,7 @@ const hideCompanyIfDepositNotPaid = (booking) => {
   return b;
 };
 
-
-i
 export const createBooking = catchAsync(async (req, res, next) => {
-  console.log("-----------------------------------------");
-  console.log("🚀 [START] Create Booking Process");
-  console.log("📦 Incoming Request Body:", JSON.stringify(req.body, null, 2));
-
   const {
     carId,
     startDate,
@@ -76,67 +74,41 @@ export const createBooking = catchAsync(async (req, res, next) => {
     pricePerDay
   } = req.body;
 
-  // 1. التحقق من وجود السيارة
   const car = await Car.findById(carId);
-  if (!car) {
-    console.log("❌ Error: Car not found");
-    return next(new AppError("السيارة المطلوبة غير موجودة", 404));
-  }
-  console.log("✅ Car Found:", car.brand, car.model);
+  if (!car) return next(new AppError("السيارة المطلوبة غير موجودة", 404));
 
-  // 2. التحقق من توفر السيارة في التواريخ المطلوبة
   const start = new Date(startDate);
   const end = new Date(endDate);
-
-  console.log(`📅 Checking availability from ${start.toISOString()} to ${end.toISOString()}`);
 
   const overlappingBooking = await Booking.findOne({
     carId: carId,
     status: { $in: ["confirmed", "pending", "on_trip"] },
-    $or: [
-      { startDate: { $lte: end }, endDate: { $gte: start } }
-    ]
+    $or: [{ startDate: { $lte: end }, endDate: { $gte: start } }]
   });
 
-  if (overlappingBooking) {
-    console.log("❌ Error: Car already booked for these dates");
-    return next(new AppError("عذراً، هذه السيارة محجوزة بالفعل في التواريخ المختارة", 400));
-  }
-  console.log("✅ Car is available for these dates");
+  if (overlappingBooking) return next(new AppError("هذه السيارة محجوزة بالفعل في التواريخ المختارة", 400));
 
-  // 3. العمليات الحسابية
   const diffTime = Math.abs(end - start);
   const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
-  const dailyPrice = parseFloat(pricePerDay) || car.pricePerDay || 0;
+  const dailyPrice = Number(pricePerDay) || Number(car.pricePerDay) || 0;
   const basePrice = totalDays * dailyPrice;
   const insurancePrice = insurance ? 50000 : 0;
   const totalPrice = basePrice + insurancePrice;
   
-  const depositPercentage = 0.3; 
+  const settings = await Settings.findOne().lean();
+  const depositPercentage = settings?.depositPercentage || 0.3;
   const totalDepositNeeded = totalPrice * depositPercentage;
 
-  console.log(`📊 Calculations: Days: ${totalDays}, Daily: ${dailyPrice}, Total: ${totalPrice}, Deposit Needed: ${totalDepositNeeded}`);
-
-  // 4. منطق المحفظة (الكاش باك)
   let walletDiscount = 0;
-  console.log(`💰 User Wallet Balance: ${req.user.walletBalance}`);
-  
-  if (useWallet && req.user.walletBalance > 0) {
-    walletDiscount = Math.min(totalDepositNeeded, req.user.walletBalance);
-    console.log(`✅ Applying Wallet Discount: ${walletDiscount}`);
+  const userWalletBalance = Number(req.user.walletBalance) || 0;
+
+  if (useWallet === true && userWalletBalance > 0) {
+    walletDiscount = Math.min(totalDepositNeeded, userWalletBalance);
   }
 
-  const finalDeposit = Math.max(0, totalDepositNeeded - walletDiscount);
-  console.log(`💵 Final Deposit to Pay: ${finalDeposit}`);
+  const finalDepositToPay = Math.max(0, totalDepositNeeded - walletDiscount);
 
-  // 5. التحقق من صحة الأرقام (الوقاية من NaN)
-  if (isNaN(finalDeposit) || isNaN(totalPrice)) {
-    console.log("❌ Error: Calculation resulted in NaN");
-    return next(new AppError("خطأ في حساب مبالغ الحجز، يرجى المحاولة مرة أخرى", 400));
-  }
-
-  // 6. إنشاء الحجز
-  const bookingData = {
+  const booking = await Booking.create({
     userId: req.user._id,
     carId,
     companyId: car.companyId,
@@ -145,33 +117,23 @@ export const createBooking = catchAsync(async (req, res, next) => {
     totalDays,
     pricePerDay: dailyPrice,
     totalPrice,
-    deposit: finalDeposit,
-    walletDiscount,
+    deposit: finalDepositToPay,
+    walletDiscount: walletDiscount,
     pickupLocation,
     dropoffLocation,
     insurance,
     status: "pending",
-    paymentMethod: (useWallet && finalDeposit === 0) ? "wallet" : "credit_card",
-    depositStatus: (useWallet && finalDeposit === 0) ? "paid" : "pending"
-  };
+    confirmationCode: generateConfirmationCode(),
+    paymentMethod: (finalDepositToPay === 0 && walletDiscount > 0) ? "wallet" : "credit_card",
+    depositStatus: (finalDepositToPay === 0 && walletDiscount > 0) ? "paid" : "pending"
+  });
 
-  const booking = await Booking.create(bookingData);
-  console.log("✅ Booking Document Created:", booking._id);
-
-  // 7. خصم المبلغ من المحفظة إذا تم استخدامه
-  if (useWallet && walletDiscount > 0) {
-    req.user.walletBalance -= walletDiscount;
+  if (walletDiscount > 0) {
+    req.user.walletBalance = Number(req.user.walletBalance) - walletDiscount;
     await req.user.save();
-    console.log(`📉 Wallet balance updated. New Balance: ${req.user.walletBalance}`);
   }
 
-  console.log("✨ [END] Booking Success");
-  console.log("-----------------------------------------");
-
-  res.status(201).json({
-    success: true,
-    booking
-  });
+  res.status(201).json({ success: true, booking });
 });
 
 export const confirmDeposit = catchAsync(async (req, res, next) => {
@@ -180,34 +142,14 @@ export const confirmDeposit = catchAsync(async (req, res, next) => {
   try {
     const booking = await Booking.findById(req.params.id).session(session);
     if (!booking) throw new AppError("الحجز غير موجود", 404);
-    if (booking.depositStatus === "paid") throw new AppError("العربون مدفوع مسبقاً", 400);
-    if (booking.status === "cancelled") throw new AppError("لا يمكن دفع العربون لحجز ملغي", 400);
-
+    if (booking.depositStatus === "paid") throw new AppError("تم دفع العربون مسبقاً", 400);
     booking.depositStatus = "paid";
     booking.depositPaidAt = new Date();
     booking.paymentStatus = "partial";
     await booking.save({ session });
-
     await session.commitTransaction();
-
-    const updatedBooking = await Booking.findById(booking._id)
-      .populate("carId", "brand model licensePlate color year images")
-      .populate("companyId", "name phone address city logo workingHours")
-      .populate("userId", "name phone")
-      .lean();
-
-    sendNotification({ 
-      userId: booking.userId, 
-      title: "تم تأكيد دفع العربون", 
-      message: `تم تأكيد دفع العربون بمبلغ ${booking.deposit} لحجزك رقم ${booking.confirmationCode}.`, 
-      type: "deposit_confirmed", 
-      relatedBooking: booking._id 
-    });
-
-    res.status(200).json({ 
-      success: true,
-      booking: updatedBooking
-    });
+    const updatedBooking = await Booking.findById(booking._id).populate("carId companyId userId").lean();
+    res.status(200).json({ success: true, booking: updatedBooking });
   } catch (error) {
     await session.abortTransaction();
     next(error);
@@ -221,23 +163,11 @@ export const confirmBooking = catchAsync(async (req, res, next) => {
   session.startTransaction();
   try {
     const booking = await Booking.findById(req.params.id).session(session);
-    if (!booking || booking.status !== "pending") throw new AppError("لا يمكن تأكيد هذا الحجز", 400);
-    if (booking.depositStatus !== "paid") throw new AppError("يجب دفع العربون أولاً قبل تأكيد الحجز", 400);
-
+    if (!booking || booking.status !== "pending") throw new AppError("لا يمكن تأكيد الحجز", 400);
     booking.status = "confirmed";
     await booking.save({ session });
     await Car.findByIdAndUpdate(booking.carId, { isAvailable: false }, { session });
-    
     await session.commitTransaction();
-
-    sendNotification({ 
-      userId: booking.userId, 
-      title: "تم تأكيد الحجز", 
-      message: `تم تأكيد حجزك رقم ${booking.confirmationCode} بنجاح.`, 
-      type: "booking_confirmed", 
-      relatedBooking: booking._id 
-    });
-
     res.status(200).json({ success: true, booking });
   } catch (error) {
     await session.abortTransaction();
@@ -251,45 +181,27 @@ export const getBookings = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 10, status } = req.query;
   let filter = {};
   if (status) filter.status = status;
-  
   const role = req.user.role?.toLowerCase();
   if (role === "user") filter.userId = req.user._id;
   else if (role === "company") filter.companyId = req.user.companyId;
-
   const result = await paginateAndPopulate({
-    filter,
-    page,
-    limit,
-    populateOptions: [
-      { path: "userId", select: "name phone" },
-      { path: "carId", select: "brand model licensePlate" },
-      { path: "companyId", select: "name phone address city logo" }
-    ]
+    filter, page, limit,
+    populateOptions: ["userId", "carId", "companyId"]
   });
-
   if (role === "user") result.bookings = result.bookings.map(hideCompanyIfDepositNotPaid);
-
   res.status(200).json({ success: true, ...result });
 });
 
 export const getBooking = catchAsync(async (req, res, next) => {
-  let booking = await Booking.findById(req.params.id)
-    .populate("userId", "name phone")
-    .populate("carId", "brand model licensePlate pricePerDay images")
-    .populate("companyId", "name phone address city logo workingHours")
-    .lean();
+  let booking = await Booking.findById(req.params.id).populate("userId carId companyId").lean();
   if (!booking) return next(new AppError("الحجز غير موجود", 404));
   if (req.user.role === "user") booking = hideCompanyIfDepositNotPaid(booking);
   res.status(200).json({ success: true, booking });
 });
 
 export const getBookingDetails = catchAsync(async (req, res, next) => {
-  let booking = await Booking.findById(req.params.id)
-    .populate("userId", "name phone address")
-    .populate("carId", "brand model licensePlate color year seats images")
-    .populate("companyId", "name phone address city logo workingHours socialMedia")
-    .lean();
-  if (!booking) return next(new AppError("تفاصيل الحجز غير موجودة", 404));
+  let booking = await Booking.findById(req.params.id).populate("userId carId companyId").lean();
+  if (!booking) return next(new AppError("الحجز غير موجود", 404));
   if (req.user.role === "user") booking = hideCompanyIfDepositNotPaid(booking);
   res.status(200).json({ success: true, booking });
 });
@@ -298,34 +210,18 @@ export const completeBooking = catchAsync(async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const { rating, review } = req.body;
     const booking = await Booking.findById(req.params.id).session(session);
     if (!booking) throw new AppError("الحجز غير موجود", 404);
-    if (booking.status === "completed") throw new AppError("الحجز مكتمل مسبقاً", 400);
-
     booking.status = "completed";
     booking.paymentStatus = "completed";
-    booking.depositStatus = "paid";
-    if (rating) booking.rating = rating;
-    if (review) booking.review = review;
-    booking.reviewedAt = Date.now();
     await booking.save({ session });
-
     const settings = await Settings.findOne().session(session).lean();
     const cashbackPerc = settings?.cashbackPercentage || 0.05;
     const cashbackAmount = Math.round(booking.totalPrice * cashbackPerc);
-
-    await mongoose.model("User").findByIdAndUpdate(
-      booking.userId,
-      { $inc: { walletBalance: cashbackAmount } },
-      { session }
-    );
-
+    await mongoose.model("User").findByIdAndUpdate(booking.userId, { $inc: { walletBalance: cashbackAmount } }, { session });
     await Car.findByIdAndUpdate(booking.carId, { isAvailable: true }, { session });
-    
     await session.commitTransaction();
-
-    res.status(200).json({ success: true, message: "تم إتمام الحجز وإضافة الكاش باك", cashbackAmount });
+    res.status(200).json({ success: true, cashbackAmount });
   } catch (error) {
     await session.abortTransaction();
     next(error);
@@ -340,46 +236,21 @@ export const completePayment = catchAsync(async (req, res, next) => {
   try {
     const { bookingId, amountPaid, useWallet } = req.body;
     const booking = await Booking.findById(bookingId).session(session);
-    if (!booking) throw new AppError("الحجز غير موجود", 404);
-    if (booking.depositStatus !== "paid") throw new AppError("يجب دفع العربون أولاً", 400);
-    if (booking.paymentStatus === "completed") throw new AppError("الحجز مدفوع بالكامل مسبقاً", 400);
-
-    const User = mongoose.model("User");
-    const user = await User.findById(booking.userId).session(session);
+    const user = await mongoose.model("User").findById(booking.userId).session(session);
     const settings = await Settings.findOne().session(session).lean();
-
     const alreadyPaid = (booking.deposit || 0) + (booking.walletDiscount || 0);
-    let remainingBalance = booking.totalPrice - alreadyPaid;
-
-    let walletUsedInPayment = 0;
-    if (useWallet && user.walletBalance >= (settings?.minCashbackToUse || 10000)) {
-      if (user.walletBalance >= remainingBalance) {
-        walletUsedInPayment = remainingBalance;
-        remainingBalance = 0;
-      } else {
-        walletUsedInPayment = user.walletBalance;
-        remainingBalance -= walletUsedInPayment;
-      }
-      
-      await User.findByIdAndUpdate(user._id, { $inc: { walletBalance: -walletUsedInPayment } }, { session });
-      booking.walletDiscount = (booking.walletDiscount || 0) + walletUsedInPayment;
+    let remaining = booking.totalPrice - alreadyPaid;
+    let walletUsed = 0;
+    const currentBalance = Number(user.walletBalance) || 0;
+    if (useWallet && currentBalance >= (settings?.minCashbackToUse || 10000)) {
+      walletUsed = Math.min(remaining, currentBalance);
+      await mongoose.model("User").findByIdAndUpdate(user._id, { $inc: { walletBalance: -walletUsed } }, { session });
+      booking.walletDiscount = (booking.walletDiscount || 0) + walletUsed;
     }
-
-    if (amountPaid < remainingBalance) {
-      throw new AppError(`المبلغ المدفوع أقل من المتبقي. المتبقي المطلوب دفعه نقداً: ${remainingBalance}`, 400);
-    }
-
     booking.paymentStatus = "completed";
     await booking.save({ session });
-    
     await session.commitTransaction();
-
-    res.status(200).json({ 
-        success: true, 
-        booking, 
-        walletUsedInPayment, 
-        cashPaid: amountPaid 
-    });
+    res.status(200).json({ success: true, walletUsed, cashPaid: amountPaid });
   } catch (error) {
     await session.abortTransaction();
     next(error);
@@ -390,46 +261,19 @@ export const completePayment = catchAsync(async (req, res, next) => {
 
 export const updateBooking = catchAsync(async (req, res, next) => {
   const booking = await Booking.findById(req.params.id);
-  if (!booking || booking.status !== "pending") throw new AppError("لا يمكن التعديل الآن", 400);
-  if (booking.depositStatus === "paid") throw new AppError("لا يمكن التعديل بعد دفع العربون", 400);
-
+  if (!booking) throw new AppError("الحجز غير موجود", 404);
   Object.assign(booking, req.body);
-  if (req.body.startDate || req.body.endDate) {
-    const start = new Date(booking.startDate);
-    const end = new Date(booking.endDate);
-    booking.totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-    const insurancePrice = booking.insurance ? (booking.pricePerDay * 0.1 * booking.totalDays) : 0;
-    booking.totalPrice = (booking.pricePerDay * booking.totalDays) + insurancePrice;
-    const settings = await Settings.findOne().lean();
-    booking.deposit = Math.round(booking.totalPrice * (settings?.depositPercentage || 0.3));
-  }
-
   await booking.save();
   res.status(200).json({ success: true, booking });
 });
 
 export const cancelBooking = catchAsync(async (req, res, next) => {
-  const { reason } = req.body;
   const booking = await Booking.findById(req.params.id);
-  if (!booking || booking.status === "cancelled") throw new AppError("الحجز ملغي مسبقاً", 400);
-
-  if (booking.depositStatus === "paid") booking.depositStatus = "refunded";
+  if (!booking) throw new AppError("الحجز غير موجود", 404);
   booking.status = "cancelled";
-  booking.cancellationReason = reason || "ملغي بواسطة المستخدم";
   booking.cancelledAt = new Date();
-  booking.cancelledBy = req.user.role;
-  
   await booking.save();
   await Car.findByIdAndUpdate(booking.carId, { isAvailable: true });
-
-  sendNotification({
-    userId: booking.userId,
-    title: "تم إلغاء الحجز",
-    message: `تم إلغاء حجزك رقم ${booking.confirmationCode}.`,
-    type: "booking_cancelled",
-    relatedBooking: booking._id
-  });
-
   res.status(200).json({ success: true });
 });
 
@@ -437,12 +281,7 @@ export const getUserBookings = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 10, status } = req.query;
   const result = await paginateAndPopulate({ 
     filter: { userId: req.user.id, ...(status && { status }) }, 
-    page, 
-    limit,
-    populateOptions: [
-      { path: "carId", select: "brand model images pricePerDay" }, 
-      { path: "companyId", select: "name address city phone logo" }
-    ] 
+    page, limit, populateOptions: ["carId", "companyId"] 
   });
   result.bookings = result.bookings.map(hideCompanyIfDepositNotPaid);
   res.status(200).json({ success: true, ...result });
@@ -453,12 +292,7 @@ export const getCompanyBookings = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 10, status } = req.query;
   const result = await paginateAndPopulate({ 
     filter: { companyId, ...(status && { status }) }, 
-    page, 
-    limit,
-    populateOptions: [
-      { path: "userId", select: "name phone" }, 
-      { path: "carId", select: "brand model licensePlate" }
-    ] 
+    page, limit, populateOptions: ["userId", "carId"] 
   });
   res.status(200).json({ success: true, ...result });
 });
@@ -476,41 +310,18 @@ export const getDepositPercentage = catchAsync(async (req, res, next) => {
 
 export const setCashbackSettings = catchAsync(async (req, res, next) => {
   const { cashbackPercentage, minCashbackToUse } = req.body;
-  const updateData = {};
-  if (cashbackPercentage !== undefined) updateData.cashbackPercentage = cashbackPercentage;
-  if (minCashbackToUse !== undefined) updateData.minCashbackToUse = minCashbackToUse;
-
-  const settings = await Settings.findOneAndUpdate({}, updateData, { upsert: true, new: true });
+  const settings = await Settings.findOneAndUpdate({}, { cashbackPercentage, minCashbackToUse }, { upsert: true, new: true });
   res.status(200).json({ success: true, settings });
 });
 
 export const getCashbackSettings = catchAsync(async (req, res, next) => {
   const settings = await Settings.findOne().lean();
-  res.status(200).json({
-    success: true,
-    cashbackPercentage: settings?.cashbackPercentage || 0.05,
-    minCashbackToUse: settings?.minCashbackToUse || 10000
-  });
+  res.status(200).json({ success: true, cashbackPercentage: settings?.cashbackPercentage || 0.05, minCashbackToUse: settings?.minCashbackToUse || 10000 });
 });
 
 export const injectWalletBalance = catchAsync(async (req, res, next) => {
   const { userId } = req.params;
   const { amount } = req.body;
-  const User = mongoose.model("User");
-  
-  const user = await User.findByIdAndUpdate(
-    userId,
-    { $set: { walletBalance: amount || 10000 } },
-    { new: true }
-  );
-
-  if (!user) {
-    return next(new AppError("المستخدم غير موجود", 404));
-  }
-
-  res.status(200).json({
-    success: true,
-    message: `تم شحن محفظة المستخدم بنجاح بمبلغ ${amount || 1000}`,
-    walletBalance: user.walletBalance
-  });
-})
+  const user = await mongoose.model("User").findByIdAndUpdate(userId, { $set: { walletBalance: Number(amount) || 0 } }, { new: true });
+  res.status(200).json({ success: true, walletBalance: user.walletBalance });
+});

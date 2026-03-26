@@ -2,7 +2,7 @@
 
 ## 📌 معلومات العام
 
-**Base URL:** `http://localhost:5000/api`
+**Base URL:** `http://http://localhost:5000/api`
 
 **Authentication:** Bearer Token (JWT)
 
