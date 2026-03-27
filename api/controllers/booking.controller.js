@@ -13,6 +13,7 @@ const SettingsSchema = new mongoose.Schema({
   minCashbackToUse: { type: Number, default: 10000 },
   insurancePrice: { type: Number, default: 50000 }
 });
+
 export const Settings = mongoose.model("Settings", SettingsSchema);
 
 const paginateAndPopulate = async ({ filter, page = 1, limit = 10, populateOptions = [] }) => {
@@ -148,9 +149,9 @@ export const getReservedDates = catchAsync(async (req, res, next) => {
     endDate: { $gte: new Date() }
   }).select("startDate endDate");
 
-  const reservedDates = bookings.map(b => ({
-    start: b.startDate,
-    end: b.endDate
+  const reservedDates = bookings.map(booking => ({
+    startDate: booking.startDate,
+    endDate: booking.endDate
   }));
 
   res.status(200).json({
@@ -363,7 +364,7 @@ export const injectWalletBalance = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    message: "تم شحن المحفظة بنجاح",
+    message: "تم شحن المحفظة بنجاح dk ee ddm ",
     walletBalance: user.walletBalance,
     user
   });
