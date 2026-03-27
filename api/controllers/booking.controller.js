@@ -15,7 +15,6 @@ const SettingsSchema = new mongoose.Schema({
 });
 export const Settings = mongoose.model("Settings", SettingsSchema);
 
-
 const paginateAndPopulate = async ({ filter, page = 1, limit = 10, populateOptions = [] }) => {
   const pageNumber = Math.max(1, parseInt(page));
   const limitNumber = Math.max(1, parseInt(limit));
@@ -31,14 +30,14 @@ const paginateAndPopulate = async ({ filter, page = 1, limit = 10, populateOptio
     Booking.countDocuments(filter)
   ]);
 
-  return { 
-    bookings, 
-    pagination: { 
-      total, 
-      page: pageNumber, 
-      limit: limitNumber, 
-      pages: Math.ceil(total / limitNumber) 
-    } 
+  return {
+    bookings,
+    pagination: {
+      total,
+      page: pageNumber,
+      limit: limitNumber,
+      pages: Math.ceil(total / limitNumber)
+    }
   };
 };
 
@@ -76,7 +75,7 @@ export const createBooking = catchAsync(async (req, res, next) => {
   const start = new Date(startDate);
   const end = new Date(endDate);
   start.setHours(0, 0, 0, 0);
-  end.setHours(23, 59, 59, 999);
+  end.setHours(0, 0, 0, 0);
 
   const overlapping = await Booking.findOne({
     carId,
@@ -89,8 +88,8 @@ export const createBooking = catchAsync(async (req, res, next) => {
   if (overlapping) return next(new AppError("السيارة محجوزة في هذه التواريخ", 400));
 
   const settings = await Settings.findOne();
-  const diffTime = Math.abs(end - start);
-  const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const diffTime = end - start;
+  const totalDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) || 1;
 
   const pricePerDay = car.pricePerDay;
   const basePrice = totalDays * pricePerDay;
@@ -140,19 +139,15 @@ export const createBooking = catchAsync(async (req, res, next) => {
   res.status(201).json({ success: true, booking });
 });
 
-
-// جلب التواريخ المحجوزة لسيارة معينة
 export const getReservedDates = catchAsync(async (req, res, next) => {
   const { carId } = req.params;
 
-  // جلب الحجوزات المؤكدة أو التي هي قيد الرحلة أو التي تنتظر دفع العربون
   const bookings = await Booking.find({
     carId,
     status: { $in: ["confirmed", "on_trip", "pending"] },
-    endDate: { $gte: new Date() } // الحجوزات المستقبلية فقط
+    endDate: { $gte: new Date() }
   }).select("startDate endDate");
 
-  // تحويل المواعيد إلى مصفوفة من الفترات
   const reservedDates = bookings.map(b => ({
     start: b.startDate,
     end: b.endDate
@@ -163,7 +158,6 @@ export const getReservedDates = catchAsync(async (req, res, next) => {
     reservedDates
   });
 });
-
 
 export const confirmDeposit = catchAsync(async (req, res, next) => {
   const session = await mongoose.startSession();
@@ -308,9 +302,9 @@ export const cancelBooking = catchAsync(async (req, res, next) => {
 
 export const getUserBookings = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 10, status } = req.query;
-  const result = await paginateAndPopulate({ 
-    filter: { userId: req.user.id, ...(status && { status }) }, 
-    page, limit, populateOptions: ["carId", "companyId"] 
+  const result = await paginateAndPopulate({
+    filter: { userId: req.user.id, ...(status && { status }) },
+    page, limit, populateOptions: ["carId", "companyId"]
   });
   result.bookings = result.bookings.map(hideCompanyIfDepositNotPaid);
   res.status(200).json({ success: true, ...result });
@@ -319,9 +313,9 @@ export const getUserBookings = catchAsync(async (req, res, next) => {
 export const getCompanyBookings = catchAsync(async (req, res, next) => {
   const { companyId } = req.params;
   const { page = 1, limit = 10, status } = req.query;
-  const result = await paginateAndPopulate({ 
-    filter: { companyId, ...(status && { status }) }, 
-    page, limit, populateOptions: ["userId", "carId"] 
+  const result = await paginateAndPopulate({
+    filter: { companyId, ...(status && { status }) },
+    page, limit, populateOptions: ["userId", "carId"]
   });
   res.status(200).json({ success: true, ...result });
 });
