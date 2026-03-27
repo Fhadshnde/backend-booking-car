@@ -15,9 +15,6 @@ const SettingsSchema = new mongoose.Schema({
 });
 export const Settings = mongoose.model("Settings", SettingsSchema);
 
-const generateConfirmationCode = () => {
-  return Math.random().toString(36).substring(2, 10).toUpperCase();
-};
 
 const paginateAndPopulate = async ({ filter, page = 1, limit = 10, populateOptions = [] }) => {
   const pageNumber = Math.max(1, parseInt(page));
@@ -63,75 +60,81 @@ const hideCompanyIfDepositNotPaid = (booking) => {
   return b;
 };
 
+const generateConfirmationCode = () => {
+  return Math.random().toString(36).substring(2, 10).toUpperCase();
+};
+
 export const createBooking = catchAsync(async (req, res, next) => {
   const { carId, startDate, endDate, insurance, useWallet, walletAmount, pickupLocation, dropoffLocation } = req.body;
 
-  // 1. التأكد من أن السيارة موجودة ومتاحة
   const car = await Car.findById(carId);
-  if (!car || !car.isAvailable || car.isSuspended) {
-    return next(new AppError("السيارة غير متاحة حالياً", 400));
-  }
+  if (!car) return next(new AppError("السيارة غير موجودة", 404));
 
-  // 2. التحقق من تداخل التواريخ (هذا هو الجزء المفقود)
-  const overlappingBooking = await Booking.findOne({
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
+  const overlapping = await Booking.findOne({
     carId,
-    status: { $in: ["pending", "confirmed", "on_trip"] }, // التحقق من الحجز النشط فقط
+    status: { $ne: "cancelled" },
     $or: [
-      { startDate: { $lte: new Date(endDate) }, endDate: { $gte: new Date(startDate) } }
+      { startDate: { $lte: end }, endDate: { $gte: start } }
     ]
   });
 
-  if (overlappingBooking) {
-    return next(new AppError("عذراً، هذه السيارة محجوزة بالفعل في التواريخ المحددة", 400));
-  }
+  if (overlapping) return next(new AppError("السيارة محجوزة في هذه التواريخ", 400));
 
-  // 3. حساب عدد الأيام
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const totalDays = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24)) || 1;
-
-  // 4. جلب إعدادات العربون والتأمين
-  const settings = await Settings.findOne().lean();
-  const depositPercentage = settings?.depositPercentage || 0.3;
-  const insurancePrice = insurance ? (settings?.insurancePrice || 50000) : 0;
-
-  // 5. الحسابات المالية
-  const basePrice = totalDays * car.pricePerDay;
-  const totalPrice = basePrice + insurancePrice;
-  const depositAmount = totalPrice * depositPercentage;
+  const settings = await Settings.findOne();
+  const diffTime = Math.abs(end - start);
+  const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   
-  let finalRemaining = totalPrice - depositAmount;
-  let walletDiscount = 0;
+  const pricePerDay = car.price;
+  const basePrice = totalDays * pricePerDay;
+  const insurancePrice = insurance ? (settings?.insurancePrice || 50000) : 0;
+  
+  let totalPrice = basePrice + insurancePrice;
+  let appliedWalletDiscount = 0;
 
   if (useWallet && walletAmount > 0) {
-    walletDiscount = Math.min(walletAmount, req.user.walletBalance, depositAmount);
-    // منطق خصم المحفظة هنا...
+    const user = await mongoose.model("User").findById(req.user.id);
+    if (user.walletBalance >= walletAmount) {
+      appliedWalletDiscount = Math.min(walletAmount, totalPrice);
+      totalPrice -= appliedWalletDiscount;
+    }
   }
 
-  // 6. إنشاء الحجز
-  const newBooking = await Booking.create({
-    userId: req.user._id,
+  const depositPercentage = settings?.depositPercentage || 0.3;
+  const deposit = totalPrice * depositPercentage;
+  const remainingAmount = totalPrice - deposit;
+
+  const booking = await Booking.create({
+    userId: req.user.id,
     carId,
     companyId: car.companyId,
-    startDate,
-    endDate,
+    startDate: start,
+    endDate: end,
     totalDays,
-    pricePerDay: car.pricePerDay,
+    pricePerDay,
     basePrice,
     insurance,
     insurancePrice,
     totalPrice,
-    deposit: depositAmount - walletDiscount,
-    remainingAmount: finalRemaining,
+    deposit,
+    walletDiscount: appliedWalletDiscount,
+    remainingAmount,
     pickupLocation,
     dropoffLocation,
     confirmationCode: generateConfirmationCode()
   });
 
-  res.status(201).json({
-    success: true,
-    booking: newBooking
-  });
+  if (appliedWalletDiscount > 0) {
+    await mongoose.model("User").findByIdAndUpdate(req.user.id, {
+      $inc: { walletBalance: -appliedWalletDiscount }
+    });
+  }
+
+  res.status(201).json({ success: true, booking });
 });
 
 
