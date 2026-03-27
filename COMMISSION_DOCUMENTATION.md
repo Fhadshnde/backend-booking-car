@@ -323,13 +323,13 @@ PUT /api/commissions/507f1f77bcf86cd799439011
 
 ### الحصول على عمولة شركة:
 ```bash
-curl -X GET "http://https://backend-booking-car.vercel.app/api/commissions/company/507f1f77bcf86cd799439012" \
+curl -X GET "http://http://localhost:5000/api/commissions/company/507f1f77bcf86cd799439012" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
 ### تعديل عمولة:
 ```bash
-curl -X PUT "http://https://backend-booking-car.vercel.app/api/commissions/507f1f77bcf86cd799439011" \
+curl -X PUT "http://http://localhost:5000/api/commissions/507f1f77bcf86cd799439011" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
