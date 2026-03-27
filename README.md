@@ -101,7 +101,7 @@ npm start
 
 ### تسجيل حساب جديد
 ```bash
-curl -X POST http://http://localhost:5000/api/auth/register \
+curl -X POST http://https://backend-booking-car.vercel.app/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Ahmed",
@@ -113,7 +113,7 @@ curl -X POST http://http://localhost:5000/api/auth/register \
 
 ### تسجيل الدخول
 ```bash
-curl -X POST http://http://localhost:5000/api/auth/login \
+curl -X POST http://https://backend-booking-car.vercel.app/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "ahmed@example.com",
@@ -123,7 +123,7 @@ curl -X POST http://http://localhost:5000/api/auth/login \
 
 ### إنشاء حجز
 ```bash
-curl -X POST http://http://localhost:5000/api/bookings \
+curl -X POST http://https://backend-booking-car.vercel.app/api/bookings \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

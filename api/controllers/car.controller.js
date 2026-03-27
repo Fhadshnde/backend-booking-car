@@ -3,8 +3,90 @@ import Car from "../models/car.model.js";
 import Company from "../models/company.model.js";
 import Booking from "../models/booking.model.js";
 import Brand from "../models/brand.model.js";
+import Ad from "../models/ad.model.js";
 import { paginate } from "../helpers/pagination.helper.js";
 
+const applyDiscountToCar = async (car) => {
+  if (!car) return null;
+  
+  const activeAd = await Ad.findOne({
+    carIds: car._id,
+    isActive: true
+  });
+  
+  let discountPercentage = 0;
+  let discountAd = null;
+  
+  if (activeAd) {
+    discountPercentage = activeAd.discountPercentage;
+    discountAd = {
+      id: activeAd._id,
+      title: activeAd.title,
+      discountPercentage: activeAd.discountPercentage,
+      image: activeAd.image
+    };
+  }
+  
+  const originalPrice = car.pricePerDay;
+  const discountedPrice = originalPrice * (1 - discountPercentage / 100);
+  
+  return {
+    ...car.toObject ? car.toObject() : car,
+    originalPrice: originalPrice,
+    discountedPrice: discountedPrice,
+    currentPrice: discountedPrice,
+    discountPercentage: discountPercentage,
+    hasDiscount: discountPercentage > 0,
+    discountAd: discountAd
+  };
+};
+
+const applyDiscountToCars = async (cars) => {
+  if (!cars || cars.length === 0) return [];
+  
+  const carIds = cars.map(car => car._id);
+  
+  const activeAds = await Ad.find({
+    carIds: { $in: carIds },
+    isActive: true
+  });
+  
+  const discountMap = new Map();
+  activeAds.forEach(ad => {
+    ad.carIds.forEach(carId => {
+      const carIdStr = carId.toString();
+      if (!discountMap.has(carIdStr) || discountMap.get(carIdStr).discountPercentage < ad.discountPercentage) {
+        discountMap.set(carIdStr, {
+          discountPercentage: ad.discountPercentage,
+          discountAd: {
+            id: ad._id,
+            title: ad.title,
+            discountPercentage: ad.discountPercentage,
+            image: ad.image
+          }
+        });
+      }
+    });
+  });
+  
+  return cars.map(car => {
+    const carIdStr = car._id.toString();
+    const discount = discountMap.get(carIdStr);
+    const discountPercentage = discount ? discount.discountPercentage : 0;
+    const originalPrice = car.pricePerDay;
+    const discountedPrice = originalPrice * (1 - discountPercentage / 100);
+    
+    return {
+      ...car.toObject ? car.toObject() : car,
+      originalPrice: originalPrice,
+      discountedPrice: discountedPrice,
+      currentPrice: discountedPrice,
+      discountPercentage: discountPercentage,
+      hasDiscount: discountPercentage > 0,
+      discountAd: discount ? discount.discountAd : null
+    };
+  });
+};
 
 export const getCars = async (req, res) => {
   try {
@@ -55,9 +137,24 @@ export const getCars = async (req, res) => {
       ]
     });
 
+    const carsData = result.data || result.cars || [];
+    const carsWithDiscount = await applyDiscountToCars(carsData);
+    
+    let filteredCars = carsWithDiscount;
+    if (minPrice || maxPrice) {
+      filteredCars = carsWithDiscount.filter(car => {
+        const priceToFilter = car.currentPrice;
+        if (minPrice && priceToFilter < Number(minPrice)) return false;
+        if (maxPrice && priceToFilter > Number(maxPrice)) return false;
+        return true;
+      });
+    }
+    
     res.status(200).json({
       success: true,
-      ...result
+      ...result,
+      data: filteredCars,
+      cars: filteredCars
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "فشل في جلب البيانات" });
@@ -77,9 +174,11 @@ export const getRecommendedCars = async (req, res) => {
       .populate("brand", "name logo")
       .lean();
 
+    const carsWithDiscount = await applyDiscountToCars(cars);
+
     res.status(200).json({
       success: true,
-      cars
+      cars: carsWithDiscount
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "فشل في جلب السيارات الموصى بها" });
@@ -93,8 +192,12 @@ export const getCar = async (req, res) => {
       .populate("category", "name icon")
       .populate("brand", "name logo")
       .lean();
+    
     if (!car) return res.status(404).json({ success: false, message: "Car not found" });
-    res.status(200).json({ success: true, car });
+    
+    const carWithDiscount = await applyDiscountToCar(car);
+    
+    res.status(200).json({ success: true, car: carWithDiscount });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch car" });
   }
@@ -140,12 +243,12 @@ export const createCar = async (req, res) => {
     });
   }
 };
+
 export const updateCar = async (req, res) => {
   try {
     const { id } = req.params;
     let updateData = req.body;
 
-    // 1. التحقق مما إذا كان هناك إحداثيات مرسلة لتحديث الموقع
     if (updateData.latitude && updateData.longitude) {
       updateData.location = {
         type: "Point",
@@ -153,11 +256,9 @@ export const updateCar = async (req, res) => {
       };
     }
 
-    // 2. ضمان تحويل القيم الرقمية (تأمين وسعر) بشكل صحيح
     if (updateData.insurancePrice) updateData.insurancePrice = Number(updateData.insurancePrice);
     if (updateData.pricePerDay) updateData.pricePerDay = Number(updateData.pricePerDay);
 
-    // 3. إجراء عملية التعديل في قاعدة البيانات
     const car = await Car.findByIdAndUpdate(
       id,
       { $set: updateData },
@@ -260,10 +361,22 @@ export const searchCars = async (req, res) => {
       .populate("brand", "name logo")
       .lean();
 
+    const carsWithDiscount = await applyDiscountToCars(cars);
+    
+    let filteredCars = carsWithDiscount;
+    if (minPrice || maxPrice) {
+      filteredCars = carsWithDiscount.filter(car => {
+        const priceToFilter = car.currentPrice;
+        if (minPrice && priceToFilter < Number(minPrice)) return false;
+        if (maxPrice && priceToFilter > Number(maxPrice)) return false;
+        return true;
+      });
+    }
+
     res.status(200).json({ 
       success: true, 
-      count: cars.length, 
-      cars 
+      count: filteredCars.length, 
+      cars: filteredCars 
     });
   } catch (error) {
     res.status(500).json({ 
@@ -280,10 +393,15 @@ export const getCarDetails = async (req, res) => {
       .populate("category", "name icon")
       .populate("brand", "name logo")
       .lean();
+    
     if (!car) return res.status(404).json({ success: false, message: "Car not found" });
+    
     const reviews = await Booking.find({ carId: req.params.id, status: "completed", rating: { $exists: true } })
       .populate("userId", "name avatar").select("rating review createdAt").sort({ createdAt: -1 }).lean();
-    res.status(200).json({ success: true, car, reviews });
+    
+    const carWithDiscount = await applyDiscountToCar(car);
+    
+    res.status(200).json({ success: true, car: carWithDiscount, reviews });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch car details" });
   }
@@ -324,7 +442,19 @@ export const getHomeCars = async (req, res) => {
       Car.find(baseFilter).sort({ pricePerDay: 1 }).limit(8).populate("companyId", "name rating").populate("category", "name icon").populate("brand", "name logo").lean(),
       Car.find(baseFilter).sort({ createdAt: -1 }).limit(8).populate("companyId", "name rating").populate("category", "name icon").populate("brand", "name logo").lean()
     ]);
-    res.status(200).json({ success: true, data: { topRated, cheapest, newest } });
+    
+    const topRatedWithDiscount = await applyDiscountToCars(topRated);
+    const cheapestWithDiscount = await applyDiscountToCars(cheapest);
+    const newestWithDiscount = await applyDiscountToCars(newest);
+    
+    res.status(200).json({ 
+      success: true, 
+      data: { 
+        topRated: topRatedWithDiscount, 
+        cheapest: cheapestWithDiscount, 
+        newest: newestWithDiscount 
+      } 
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch home cars" });
   }
@@ -396,10 +526,12 @@ export const getCarsByCompany = async (req, res) => {
       Car.countDocuments({ companyId })
     ]);
 
+    const carsWithDiscount = await applyDiscountToCars(cars);
+
     res.status(200).json({
       success: true,
-      count: cars.length,
-      cars,
+      count: carsWithDiscount.length,
+      cars: carsWithDiscount,
       pagination: {
         total,
         page: pageNumber,
@@ -437,10 +569,12 @@ export const getCarsByBrand = async (req, res) => {
       Car.countDocuments({ brand: brandId, isAvailable: true, isSuspended: false })
     ]);
 
+    const carsWithDiscount = await applyDiscountToCars(cars);
+
     res.status(200).json({
       success: true,
-      count: cars.length,
-      cars,
+      count: carsWithDiscount.length,
+      cars: carsWithDiscount,
       pagination: {
         total,
         page: parseInt(page),
