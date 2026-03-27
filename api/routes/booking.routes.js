@@ -16,7 +16,7 @@ import {
   getDepositPercentage,
   setCashbackSettings,
   getCashbackSettings,
-  injectWalletBalance
+  injectWalletBalance,getReservedDates
 } from "../controllers/booking.controller.js";
 
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
@@ -34,6 +34,7 @@ router.post("/admin/inject-wallet/:userId", protect, restrictTo("admin"), inject
 router.get("/user/my-bookings", protect, restrictTo("user"), getUserBookings);
 
 router.get("/company/:companyId", protect, restrictTo("company", "admin"), getCompanyBookings);
+router.get("/reserved-dates/:carId", getReservedDates);
 
 router.get("/", protect, getBookings);
 router.post("/", protect, restrictTo("user"), createBooking);

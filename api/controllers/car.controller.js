@@ -142,16 +142,45 @@ export const createCar = async (req, res) => {
 };
 export const updateCar = async (req, res) => {
   try {
-    const car = await Car.findById(req.params.id);
-    if (!car) return res.status(404).json({ success: false, message: "Car not found" });
-    if (req.user.role.toLowerCase() === "company" && car.companyId.toString() !== req.user.companyId.toString()) {
-      return res.status(403).json({ success: false, message: "Access denied" });
+    const { id } = req.params;
+    let updateData = req.body;
+
+    // 1. التحقق مما إذا كان هناك إحداثيات مرسلة لتحديث الموقع
+    if (updateData.latitude && updateData.longitude) {
+      updateData.location = {
+        type: "Point",
+        coordinates: [Number(updateData.longitude), Number(updateData.latitude)]
+      };
     }
-    Object.assign(car, req.body);
-    await car.save();
-    res.status(200).json({ success: true, message: "Car updated successfully", car });
+
+    // 2. ضمان تحويل القيم الرقمية (تأمين وسعر) بشكل صحيح
+    if (updateData.insurancePrice) updateData.insurancePrice = Number(updateData.insurancePrice);
+    if (updateData.pricePerDay) updateData.pricePerDay = Number(updateData.pricePerDay);
+
+    // 3. إجراء عملية التعديل في قاعدة البيانات
+    const car = await Car.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (!car) {
+      return res.status(404).json({
+        success: false,
+        message: "لم يتم العثور على السيارة المطلوبة"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "تم تحديث بيانات السيارة بنجاح بما في ذلك الموقع",
+      car
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to update car" });
+    res.status(500).json({
+      success: false,
+      message: "فشل تحديث السيارة: " + error.message
+    });
   }
 };
 
