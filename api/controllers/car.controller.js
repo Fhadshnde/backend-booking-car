@@ -103,19 +103,43 @@ export const getCar = async (req, res) => {
 export const createCar = async (req, res) => {
   try {
     let data = req.body;
-    if (req.user.role.toLowerCase() === "company") data.companyId = req.user.companyId;
+
+    if (req.user.role.toLowerCase() === "company") {
+      data.companyId = req.user.companyId;
+    }
 
     const existingCar = await Car.findOne({ licensePlate: data.licensePlate });
-    if (existingCar) return res.status(400).json({ success: false, message: "License plate already exists" });
+    if (existingCar) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "رقم اللوحة مسجل مسبقاً لسيارة أخرى" 
+      });
+    }
+
+    if (data.insurancePrice) {
+      data.insurancePrice = Number(data.insurancePrice);
+    } else {
+      data.insurancePrice = 0;
+    }
 
     const car = await Car.create(data);
-    await Company.findByIdAndUpdate(data.companyId, { $inc: { totalCars: 1 } });
-    res.status(201).json({ success: true, message: "Car created successfully", car });
+
+    await Company.findByIdAndUpdate(data.companyId, { 
+      $inc: { totalCars: 1 } 
+    });
+
+    res.status(201).json({ 
+      success: true, 
+      message: "تم إنشاء السيارة بنجاح مع سعر التأمين المحدد", 
+      car 
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to create car" });
+    res.status(500).json({ 
+      success: false, 
+      message: "فشل في إنشاء السيارة: " + error.message 
+    });
   }
 };
-
 export const updateCar = async (req, res) => {
   try {
     const car = await Car.findById(req.params.id);

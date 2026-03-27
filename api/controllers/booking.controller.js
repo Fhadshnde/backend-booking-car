@@ -10,7 +10,8 @@ import AppError from "../helpers/AppError.js";
 const SettingsSchema = new mongoose.Schema({
   depositPercentage: { type: Number, default: 0.3 },
   cashbackPercentage: { type: Number, default: 0.05 },
-  minCashbackToUse: { type: Number, default: 10000 }
+  minCashbackToUse: { type: Number, default: 10000 },
+  insurancePrice: { type: Number, default: 50000 }
 });
 export const Settings = mongoose.model("Settings", SettingsSchema);
 
@@ -62,7 +63,6 @@ const hideCompanyIfDepositNotPaid = (booking) => {
   return b;
 };
 
-
 export const createBooking = catchAsync(async (req, res, next) => {
   const { 
     carId, 
@@ -72,7 +72,7 @@ export const createBooking = catchAsync(async (req, res, next) => {
     pickupLocation, 
     dropoffLocation, 
     useWallet, 
-    walletAmount, // المبلغ الذي حدده المستخدم من الواجهة
+    walletAmount,
     insurance 
   } = req.body;
 
@@ -81,13 +81,17 @@ export const createBooking = catchAsync(async (req, res, next) => {
 
   const start = new Date(startDate);
   const end = new Date(endDate);
+
   const totalDays = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24)) || 1;
-  
+
   const basePrice = totalDays * car.pricePerDay;
-  const insurancePrice = insurance ? 50000 : 0;
-  const totalPrice = basePrice + insurancePrice;
 
   const settings = await Settings.findOne();
+
+  const insurancePrice = insurance ? (settings?.insurancePrice || 0) : 0;
+
+  const totalPrice = basePrice + insurancePrice;
+
   const depositPercentage = settings?.depositPercentage || 0.3;
   const totalDepositNeeded = totalPrice * depositPercentage;
 
@@ -96,13 +100,11 @@ export const createBooking = catchAsync(async (req, res, next) => {
 
   if (useWallet && walletAmount > 0) {
     const user = await mongoose.model("User").findById(req.user.id);
-    
-    // التأكد أن المستخدم يملك المبلغ الذي حدده
+
     if (user.walletBalance < walletAmount) {
-      return next(new AppError("رصيد المحفظة غير كافٍ للمبلغ المحدد", 400));
+      return next(new AppError("رصيد المحفظة غير كافٍ", 400));
     }
 
-    // الخصم لا يتجاوز العربون (أو السعر الكامل حسب سياستك، هنا جعلناه لا يتجاوز العربون)
     walletDiscount = Math.min(walletAmount, totalDepositNeeded);
 
     updatedUser = await mongoose.model("User").findByIdAndUpdate(
@@ -113,7 +115,10 @@ export const createBooking = catchAsync(async (req, res, next) => {
   }
 
   const finalDeposit = Math.max(0, totalDepositNeeded - walletDiscount);
-  const confirmationCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+  const remainingAmount = totalPrice - totalDepositNeeded;
+
+  const confirmationCode = generateConfirmationCode();
 
   const booking = await Booking.create({
     userId: req.user.id,
@@ -123,11 +128,13 @@ export const createBooking = catchAsync(async (req, res, next) => {
     endDate,
     totalDays,
     pricePerDay: car.pricePerDay,
-    totalPrice,
+    basePrice,
     insurance,
     insurancePrice,
-    walletDiscount,
+    totalPrice,
     deposit: finalDeposit,
+    walletDiscount,
+    remainingAmount,
     pickupLocation,
     dropoffLocation,
     confirmationCode,

@@ -31,6 +31,7 @@ const carSchema = new mongoose.Schema(
     isSuspended: { type: Boolean, default: false },
     suspensionReason: String,
     suspendedAt: Date,
+    insurancePrice: { type: Number, default: 0 },
     rating: { type: Number, default: 0, min: 0, max: 5 },
     totalReviews: { type: Number, default: 0 },
     totalBookings: { type: Number, default: 0 },
