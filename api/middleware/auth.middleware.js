@@ -1,7 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 
-// Middleware إجباري - يرفض الطلبات بدون token
 export const protect = async (req, res, next) => {
   try {
     let token;
@@ -37,25 +36,15 @@ export const protect = async (req, res, next) => {
     next();
   } catch (error) {
     if (error.name === "JsonWebTokenError") {
-      return res.status(401).json({
-        success: false,
-        message: "رمز المصادقة غير صالح"
-      });
+      return res.status(401).json({ success: false, message: "رمز المصادقة غير صالح" });
     }
     if (error.name === "TokenExpiredError") {
-      return res.status(401).json({
-        success: false,
-        message: "انتهت صلاحية رمز المصادقة. يرجى تسجيل الدخول مجدداً"
-      });
+      return res.status(401).json({ success: false, message: "انتهت صلاحية الرمز" });
     }
-    return res.status(500).json({
-      success: false,
-      message: "خطأ في التحقق من المصادقة"
-    });
+    return res.status(500).json({ success: false, message: "خطأ في التحقق" });
   }
 };
 
-// Middleware اختياري - يسمح بالمرور بدون token لكن يضيف المستخدم إذا وُجد
 export const optionalAuth = async (req, res, next) => {
   try {
     let token;
@@ -73,7 +62,6 @@ export const optionalAuth = async (req, res, next) => {
     if (user && user.isActive) {
       req.user = user;
     }
-
     next();
   } catch (error) {
     next();
@@ -83,17 +71,12 @@ export const optionalAuth = async (req, res, next) => {
 export const restrictTo = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: "يجب تسجيل الدخول أولاً"
-      });
+      return res.status(401).json({ success: false, message: "يجب تسجيل الدخول أولاً" });
     }
-
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: "ليس لديك صلاحية للوصول إلى هذا المسار"
-      });
+    const userRole = req.user.role.toLowerCase();
+    const allowedRoles = roles.map(role => role.toLowerCase());
+    if (!allowedRoles.includes(userRole)) {
+      return res.status(403).json({ success: false, message: "ليس لديك صلاحية" });
     }
     next();
   };
@@ -102,30 +85,15 @@ export const restrictTo = (...roles) => {
 export const checkCompanyOwner = async (req, res, next) => {
   try {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: "يجب تسجيل الدخول أولاً"
-      });
+      return res.status(401).json({ success: false, message: "يجب تسجيل الدخول أولاً" });
     }
-
-    const companyId = req.params.id;
-
-    if (req.user.role === "admin") {
+    if (req.user.role === "admin") return next();
+    const targetId = req.params.companyId || req.params.id;
+    if (req.user.role === "company" && req.user.companyId?.toString() === targetId) {
       return next();
     }
-
-    if (req.user.role === "company" && req.user.companyId?.toString() === companyId) {
-      return next();
-    }
-
-    return res.status(403).json({
-      success: false,
-      message: "يمكنك فقط تعديل بيانات شركتك"
-    });
+    return res.status(403).json({ success: false, message: "غير مصرح لك" });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "خطأ في التحقق من الصلاحيات"
-    });
+    res.status(500).json({ success: false, message: "خطأ في التحقق" });
   }
 };

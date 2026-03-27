@@ -12,43 +12,28 @@ import {
   getHomeCars,
   toggleCarAvailability,
   getCompanyAnalytics,
-  getCarsByBrand, getRecommendedCars
-
+  getCarsByBrand,
+  getRecommendedCars
 } from "../controllers/car.controller.js";
 
-import { protect } from "../middleware/auth.middleware.js";
+import { protect, optionalAuth, restrictTo } from "../middleware/auth.middleware.js";
 import { uploadCarImages } from "../middleware/upload.js";
 import { validate, createCarSchema, updateCarSchema } from "../middleware/validation.js";
 
-export const restrictTo = (...roles) => {
-  return (req, res, next) => {
-    if (!roles.map(r => r.toLowerCase()).includes(req.user.role.toLowerCase())) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-    next();
-  };
-};
-
 const router = express.Router();
 
+router.get("/", optionalAuth, getCars);
 router.get("/home/cars", getHomeCars);
 router.get("/recommended", getRecommendedCars);
-
-router.get("/search", protect, searchCars);
+router.get("/search", searchCars);
+router.get("/brand/:brandId", getCarsByBrand);
+router.get("/company/:companyId", optionalAuth, getCarsByCompany);
+router.get("/:id", getCar);
+router.get("/:id/details", getCarDetails);
+router.get("/:id/availability", getCarAvailability);
 
 router.get("/analytics", protect, restrictTo("company", "admin"), getCompanyAnalytics);
-
-router.get("/company/:companyId", protect, getCarsByCompany);
-
-router.get("/:id/details", protect, getCarDetails);
-
-router.get("/:id/availability", protect, getCarAvailability);
-
 router.patch("/:id/toggle-status", protect, restrictTo("admin", "company"), toggleCarAvailability);
-
-router.get("/:id", protect, getCar);
-
-router.get("/", protect, getCars);
 
 router.post(
   "/",
@@ -75,6 +60,4 @@ router.delete(
   deleteCar
 );
 
-router.get("/brand/:brandId", protect, getCarsByBrand);
 export default router;
-
