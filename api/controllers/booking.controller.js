@@ -70,6 +70,9 @@ export const createBooking = catchAsync(async (req, res, next) => {
   const car = await Car.findById(carId);
   if (!car) return next(new AppError("السيارة غير موجودة", 404));
 
+  if (!car.pricePerDay) return next(new AppError("سعر السيارة غير موجود", 400));
+  if (!car.companyId) return next(new AppError("السيارة غير مرتبطة بشركة", 400));
+
   const start = new Date(startDate);
   const end = new Date(endDate);
   start.setHours(0, 0, 0, 0);
@@ -88,17 +91,17 @@ export const createBooking = catchAsync(async (req, res, next) => {
   const settings = await Settings.findOne();
   const diffTime = Math.abs(end - start);
   const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
-  const pricePerDay = car.price;
+
+  const pricePerDay = car.pricePerDay;
   const basePrice = totalDays * pricePerDay;
   const insurancePrice = insurance ? (settings?.insurancePrice || 50000) : 0;
-  
+
   let totalPrice = basePrice + insurancePrice;
   let appliedWalletDiscount = 0;
 
   if (useWallet && walletAmount > 0) {
     const user = await mongoose.model("User").findById(req.user.id);
-    if (user.walletBalance >= walletAmount) {
+    if (user && user.walletBalance >= walletAmount) {
       appliedWalletDiscount = Math.min(walletAmount, totalPrice);
       totalPrice -= appliedWalletDiscount;
     }
