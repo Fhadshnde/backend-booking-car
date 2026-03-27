@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Booking from "../models/booking.model.js";
 import Settings from "../models/settings.model.js";
 import catchAsync from "../helpers/catchAsync.js";
@@ -24,7 +25,7 @@ export const createPaymentIntent = catchAsync(async (req, res, next) => {
     return next(new AppError("الحجز غير موجود", 404));
   }
 
-  if (booking.userId.toString() !== req.user.id) {
+  if (booking.userId.toString() !== req.user.id.toString()) {
     return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
   }
 
@@ -56,7 +57,7 @@ export const confirmPayment = catchAsync(async (req, res, next) => {
     return next(new AppError("الحجز غير موجود", 404));
   }
 
-  if (booking.userId.toString() !== req.user.id) {
+  if (booking.userId._id.toString() !== req.user.id.toString()) {
     return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
   }
 

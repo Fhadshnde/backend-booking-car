@@ -81,7 +81,7 @@ export const createBooking = catchAsync(async (req, res, next) => {
     return code;
   };
 
-  const confirmationCode = generateConfirmationCode();
+  let confirmationCode = generateConfirmationCode();
   let isUnique = false;
   while (!isUnique) {
     const existing = await Booking.findOne({ confirmationCode });
@@ -111,8 +111,8 @@ export const createBooking = catchAsync(async (req, res, next) => {
     status: "pending",
     paymentStatus: "pending",
     confirmationCode,
-    pickupLocation,
-    dropoffLocation,
+    pickupLocation: pickupLocation || "مكتب الشركة",
+    dropoffLocation: dropoffLocation || "مكتب الشركة",
     driverLicense,
   });
 
@@ -124,95 +124,12 @@ export const createBooking = catchAsync(async (req, res, next) => {
 
   const populatedBooking = await Booking.findById(booking._id)
     .populate("userId", "name email phone")
-    .populate("carId", "brand model images licensePlate")
+    .populate("carId", "brand model images licensePlate pricePerDay")
     .populate("companyId", "name address phone");
 
   res.status(201).json({
     success: true,
     booking: populatedBooking,
-  });
-});
-
-export const confirmDeposit = catchAsync(async (req, res, next) => {
-  const { id } = req.params;
-  const { paymentIntentId } = req.body;
-
-  const booking = await Booking.findById(id);
-  if (!booking) {
-    return next(new AppError("الحجز غير موجود", 404));
-  }
-
-  if (booking.userId.toString() !== req.user.id) {
-    return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
-  }
-
-  if (booking.depositStatus === "paid") {
-    return next(new AppError("تم دفع العربون مسبقاً", 400));
-  }
-
-  booking.depositStatus = "paid";
-  booking.depositPaidAt = new Date();
-  booking.status = "confirmed";
-  booking.paymentStatus = "partial";
-  booking.transactionId = paymentIntentId;
-
-  await booking.save();
-
-  const populatedBooking = await Booking.findById(booking._id)
-    .populate("userId", "name email phone")
-    .populate("carId", "brand model images licensePlate")
-    .populate("companyId", "name address phone");
-
-  res.status(200).json({
-    success: true,
-    booking: populatedBooking,
-  });
-});
-
-export const completePayment = catchAsync(async (req, res, next) => {
-  const { id } = req.params;
-  const { paymentIntentId } = req.body;
-
-  const booking = await Booking.findById(id);
-  if (!booking) {
-    return next(new AppError("الحجز غير موجود", 404));
-  }
-
-  if (booking.userId.toString() !== req.user.id) {
-    return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
-  }
-
-  if (booking.paymentStatus === "completed") {
-    return next(new AppError("تم دفع المبلغ كاملاً مسبقاً", 400));
-  }
-
-  booking.paymentStatus = "completed";
-  booking.depositStatus = "paid";
-  booking.depositPaidAt = new Date();
-  booking.transactionId = paymentIntentId;
-
-  await booking.save();
-
-  const populatedBooking = await Booking.findById(booking._id)
-    .populate("userId", "name email phone")
-    .populate("carId", "brand model images licensePlate")
-    .populate("companyId", "name address phone");
-
-  res.status(200).json({
-    success: true,
-    booking: populatedBooking,
-  });
-});
-
-export const getUserBookings = catchAsync(async (req, res, next) => {
-  const bookings = await Booking.find({ userId: req.user.id })
-    .populate("carId", "brand model images licensePlate pricePerDay")
-    .populate("companyId", "name address phone")
-    .sort({ createdAt: -1 });
-
-  res.status(200).json({
-    success: true,
-    bookings,
   });
 });
 
@@ -235,6 +152,18 @@ export const getReservedDates = catchAsync(async (req, res, next) => {
   });
 });
 
+export const getUserBookings = catchAsync(async (req, res, next) => {
+  const bookings = await Booking.find({ userId: req.user.id })
+    .populate("carId", "brand model images licensePlate pricePerDay")
+    .populate("companyId", "name address phone")
+    .sort({ createdAt: -1 });
+
+  res.status(200).json({
+    success: true,
+    bookings,
+  });
+});
+
 export const cancelBooking = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const { reason } = req.body;
@@ -244,7 +173,7 @@ export const cancelBooking = catchAsync(async (req, res, next) => {
     return next(new AppError("الحجز غير موجود", 404));
   }
 
-  if (booking.userId.toString() !== req.user.id) {
+  if (booking.userId.toString() !== req.user.id.toString()) {
     return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
   }
 
@@ -361,7 +290,7 @@ export const updateBooking = catchAsync(async (req, res, next) => {
     return next(new AppError("الحجز غير موجود", 404));
   }
 
-  if (booking.userId.toString() !== req.user.id) {
+  if (booking.userId.toString() !== req.user.id.toString()) {
     return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
   }
 
@@ -494,6 +423,77 @@ export const getCompanyBookings = catchAsync(async (req, res, next) => {
       limit: parseInt(limit),
       pages: Math.ceil(total / limit),
     },
+  });
+});
+
+export const confirmDeposit = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const { paymentIntentId } = req.body;
+
+  const booking = await Booking.findById(id);
+  if (!booking) {
+    return next(new AppError("الحجز غير موجود", 404));
+  }
+
+  if (booking.userId.toString() !== req.user.id.toString()) {
+    return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
+  }
+
+  if (booking.depositStatus === "paid") {
+    return next(new AppError("تم دفع العربون مسبقاً", 400));
+  }
+
+  booking.depositStatus = "paid";
+  booking.depositPaidAt = new Date();
+  booking.status = "confirmed";
+  booking.paymentStatus = "partial";
+  booking.transactionId = paymentIntentId;
+
+  await booking.save();
+
+  const populatedBooking = await Booking.findById(booking._id)
+    .populate("userId", "name email phone")
+    .populate("carId", "brand model images licensePlate")
+    .populate("companyId", "name address phone");
+
+  res.status(200).json({
+    success: true,
+    booking: populatedBooking,
+  });
+});
+
+export const completePayment = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const { paymentIntentId } = req.body;
+
+  const booking = await Booking.findById(id);
+  if (!booking) {
+    return next(new AppError("الحجز غير موجود", 404));
+  }
+
+  if (booking.userId.toString() !== req.user.id.toString()) {
+    return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
+  }
+
+  if (booking.paymentStatus === "completed") {
+    return next(new AppError("تم دفع المبلغ كاملاً مسبقاً", 400));
+  }
+
+  booking.paymentStatus = "completed";
+  booking.depositStatus = "paid";
+  booking.depositPaidAt = new Date();
+  booking.transactionId = paymentIntentId;
+
+  await booking.save();
+
+  const populatedBooking = await Booking.findById(booking._id)
+    .populate("userId", "name email phone")
+    .populate("carId", "brand model images licensePlate")
+    .populate("companyId", "name address phone");
+
+  res.status(200).json({
+    success: true,
+    booking: populatedBooking,
   });
 });
 
