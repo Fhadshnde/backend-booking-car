@@ -19,8 +19,8 @@ import {
   injectWalletBalance,
   getReservedDates
 } from "../controllers/booking.controller.js";
-
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
+import Booking from "../models/booking.model.js";
 
 const router = express.Router();
 
@@ -42,14 +42,28 @@ router.get("/:id", protect, getBooking);
 router.get("/:id/details", protect, getBookingDetails);
 router.put("/:id", protect, restrictTo("user"), updateBooking);
 router.delete("/:id", protect, restrictTo("user"), cancelBooking);
-router.delete("/admin/clear-bookings/:carId", protect, restrictTo("admin"), async (req, res) => {
-  const { carId } = req.params;
-  await Booking.deleteMany({ carId });
-  res.json({ success: true, message: "تم حذف جميع حجوزات السيارة" });
-});
+
 router.put("/:id/confirm-deposit", protect, restrictTo("user"), confirmDeposit);
 router.put("/:id/confirm", protect, restrictTo("company", "admin"), confirmBooking);
 router.put("/:id/complete-payment", protect, completePayment);
 router.put("/:id/complete", protect, restrictTo("company", "admin"), completeBooking);
+
+// مؤقتاً للتطوير فقط - احذف بعد الانتهاء
+router.delete("/admin/clear-bookings/:carId", protect, restrictTo("admin"), async (req, res) => {
+  try {
+    const { carId } = req.params;
+    const result = await Booking.deleteMany({ carId });
+    res.json({ 
+      success: true, 
+      message: `تم حذف ${result.deletedCount} حجز للسيارة`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+});
 
 export default router;
