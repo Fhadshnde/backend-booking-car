@@ -20,6 +20,10 @@ export const createPaymentIntent = catchAsync(async (req, res, next) => {
 
   const booking = await Booking.findById(bookingId);
   if (!booking) return next(new AppError("الحجز غير موجود", 404));
+  
+  if (booking.depositStatus === "paid") {
+    return next(new AppError("تم دفع العربون مسبقاً", 400));
+  }
 
   const paymentIntent = await fakeStripe.paymentIntents.create();
 
@@ -28,15 +32,24 @@ export const createPaymentIntent = catchAsync(async (req, res, next) => {
     clientSecret: paymentIntent.client_secret,
     paymentIntentId: paymentIntent.id,
     amount: booking.deposit,
-    currency: "iqd"
+    currency: "iqd",
+    bookingId: booking._id
   });
 });
 
 export const confirmPayment = catchAsync(async (req, res, next) => {
   const { bookingId, paymentIntentId } = req.body;
 
-  const booking = await Booking.findById(bookingId).populate("companyId");
+  const booking = await Booking.findById(bookingId)
+    .populate("companyId")
+    .populate("carId")
+    .populate("userId");
+  
   if (!booking) return next(new AppError("الحجز غير موجود", 404));
+  
+  if (booking.depositStatus === "paid") {
+    return next(new AppError("تم دفع العربون مسبقاً", 400));
+  }
 
   const paymentIntent = await fakeStripe.paymentIntents.retrieve(paymentIntentId);
 
@@ -49,14 +62,22 @@ export const confirmPayment = catchAsync(async (req, res, next) => {
     
     await booking.save();
 
+    const populatedBooking = await Booking.findById(booking._id)
+      .populate("companyId")
+      .populate("carId")
+      .populate("userId")
+      .lean();
+
     res.status(200).json({
       success: true,
-      booking
+      booking: populatedBooking,
+      paymentIntentId: paymentIntent.id
     });
   } else {
     return next(new AppError("فشلت عملية الدفع", 400));
   }
 });
+
 export const stripeWebhook = async (req, res) => {
   res.json({ received: true });
 };
@@ -67,5 +88,10 @@ export const getPaymentStatus = catchAsync(async (req, res, next) => {
   if (!booking) {
     return next(new AppError("الحجز غير موجود", 404));
   }
-  res.status(200).json({ success: true, paymentStatus: booking.paymentStatus });
+  res.status(200).json({ 
+    success: true, 
+    paymentStatus: booking.paymentStatus,
+    depositStatus: booking.depositStatus,
+    bookingStatus: booking.status
+  });
 });
