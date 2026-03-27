@@ -42,7 +42,11 @@ router.get("/:id", protect, getBooking);
 router.get("/:id/details", protect, getBookingDetails);
 router.put("/:id", protect, restrictTo("user"), updateBooking);
 router.delete("/:id", protect, restrictTo("user"), cancelBooking);
-
+router.delete("/admin/clear-bookings/:carId", protect, restrictTo("admin"), async (req, res) => {
+  const { carId } = req.params;
+  await Booking.deleteMany({ carId });
+  res.json({ success: true, message: "تم حذف جميع حجوزات السيارة" });
+});
 router.put("/:id/confirm-deposit", protect, restrictTo("user"), confirmDeposit);
 router.put("/:id/confirm", protect, restrictTo("company", "admin"), confirmBooking);
 router.put("/:id/complete-payment", protect, completePayment);
