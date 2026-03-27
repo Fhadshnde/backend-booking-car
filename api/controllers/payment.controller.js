@@ -1,4 +1,5 @@
 import Booking from "../models/booking.model.js";
+import Settings from "../models/settings.model.js";
 import catchAsync from "../helpers/catchAsync.js";
 import AppError from "../helpers/AppError.js";
 
@@ -19,8 +20,14 @@ export const createPaymentIntent = catchAsync(async (req, res, next) => {
   const { bookingId } = req.body;
 
   const booking = await Booking.findById(bookingId);
-  if (!booking) return next(new AppError("الحجز غير موجود", 404));
-  
+  if (!booking) {
+    return next(new AppError("الحجز غير موجود", 404));
+  }
+
+  if (booking.userId.toString() !== req.user.id) {
+    return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
+  }
+
   if (booking.depositStatus === "paid") {
     return next(new AppError("تم دفع العربون مسبقاً", 400));
   }
@@ -33,7 +40,7 @@ export const createPaymentIntent = catchAsync(async (req, res, next) => {
     paymentIntentId: paymentIntent.id,
     amount: booking.deposit,
     currency: "iqd",
-    bookingId: booking._id
+    bookingId: booking._id,
   });
 });
 
@@ -44,9 +51,15 @@ export const confirmPayment = catchAsync(async (req, res, next) => {
     .populate("companyId")
     .populate("carId")
     .populate("userId");
-  
-  if (!booking) return next(new AppError("الحجز غير موجود", 404));
-  
+
+  if (!booking) {
+    return next(new AppError("الحجز غير موجود", 404));
+  }
+
+  if (booking.userId.toString() !== req.user.id) {
+    return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
+  }
+
   if (booking.depositStatus === "paid") {
     return next(new AppError("تم دفع العربون مسبقاً", 400));
   }
@@ -59,7 +72,7 @@ export const confirmPayment = catchAsync(async (req, res, next) => {
     booking.status = "confirmed";
     booking.depositPaidAt = new Date();
     booking.transactionId = paymentIntentId;
-    
+
     await booking.save();
 
     const populatedBooking = await Booking.findById(booking._id)
@@ -71,7 +84,7 @@ export const confirmPayment = catchAsync(async (req, res, next) => {
     res.status(200).json({
       success: true,
       booking: populatedBooking,
-      paymentIntentId: paymentIntent.id
+      paymentIntentId: paymentIntent.id,
     });
   } else {
     return next(new AppError("فشلت عملية الدفع", 400));
@@ -84,14 +97,16 @@ export const stripeWebhook = async (req, res) => {
 
 export const getPaymentStatus = catchAsync(async (req, res, next) => {
   const { bookingId } = req.params;
+
   const booking = await Booking.findById(bookingId);
   if (!booking) {
     return next(new AppError("الحجز غير موجود", 404));
   }
-  res.status(200).json({ 
-    success: true, 
+
+  res.status(200).json({
+    success: true,
     paymentStatus: booking.paymentStatus,
     depositStatus: booking.depositStatus,
-    bookingStatus: booking.status
+    bookingStatus: booking.status,
   });
 });
