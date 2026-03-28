@@ -354,12 +354,16 @@ export const confirmBooking = catchAsync(async (req, res, next) => {
   }
 
   booking.status = "confirmed";
-
   await booking.save();
+
+  const populatedBooking = await Booking.findById(booking._id)
+    .populate("userId", "name email phone")
+    .populate("carId", "brand model images licensePlate")
+    .populate("companyId", "name address phone");
 
   res.status(200).json({
     success: true,
-    booking,
+    booking: populatedBooking,
   });
 });
 
@@ -380,12 +384,41 @@ export const completeBooking = catchAsync(async (req, res, next) => {
   }
 
   booking.status = "completed";
-
   await booking.save();
+
+  let cashbackAmount = 0;
+  let cashbackPercentage = 0;
+
+  if (!booking.cashbackAddedAfterCompletion) {
+    const settings = await Settings.findOne().sort({ createdAt: -1 });
+    cashbackPercentage = settings ? settings.cashbackAfterCompletionPercentage || 5 : 5;
+    cashbackAmount = (booking.totalPrice * cashbackPercentage) / 100;
+
+    if (cashbackAmount > 0) {
+      await User.findByIdAndUpdate(booking.userId, {
+        $inc: { walletBalance: cashbackAmount }
+      });
+
+      booking.cashbackAfterCompletion = cashbackAmount;
+      booking.cashbackAfterCompletionPercentage = cashbackPercentage;
+      booking.cashbackAddedAfterCompletion = true;
+      booking.cashbackAfterCompletionAddedAt = new Date();
+      booking.cashbackAfterCompletionAddedBy = req.user.id;
+      await booking.save();
+    }
+  }
+
+  const populatedBooking = await Booking.findById(booking._id)
+    .populate("userId", "name email phone")
+    .populate("carId", "brand model images licensePlate")
+    .populate("companyId", "name address phone");
 
   res.status(200).json({
     success: true,
-    booking,
+    booking: populatedBooking,
+    cashbackAdded: cashbackAmount > 0,
+    cashbackAmount,
+    cashbackPercentage,
   });
 });
 
@@ -514,5 +547,103 @@ export const injectWalletBalance = catchAsync(async (req, res, next) => {
   res.status(200).json({
     success: true,
     walletBalance: user.walletBalance,
+  });
+});
+
+export const processExpiredBookingsCashback = catchAsync(async (req, res, next) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const expiredBookings = await Booking.find({
+    endDate: { $lt: today },
+    status: "confirmed",
+    cashbackAddedAfterExpiry: { $ne: true },
+  });
+
+  let totalCashbackAdded = 0;
+  const results = [];
+
+  for (const booking of expiredBookings) {
+    const settings = await Settings.findOne().sort({ createdAt: -1 });
+    const cashbackPercentage = settings ? settings.cashbackAfterExpiryPercentage || 3 : 3;
+    const cashbackAmount = (booking.totalPrice * cashbackPercentage) / 100;
+
+    if (cashbackAmount > 0) {
+      await User.findByIdAndUpdate(booking.userId, {
+        $inc: { walletBalance: cashbackAmount }
+      });
+
+      booking.cashbackAfterExpiry = cashbackAmount;
+      booking.cashbackAfterExpiryPercentage = cashbackPercentage;
+      booking.cashbackAddedAfterExpiry = true;
+      booking.cashbackAfterExpiryAddedAt = new Date();
+      await booking.save();
+
+      totalCashbackAdded += cashbackAmount;
+      results.push({
+        bookingId: booking._id,
+        userId: booking.userId,
+        cashbackAmount,
+        cashbackPercentage,
+      });
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    processedCount: expiredBookings.length,
+    totalCashbackAdded,
+    results,
+  });
+});
+
+export const addManualCashbackAfterCompletion = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const { cashbackPercentage } = req.body;
+
+  const booking = await Booking.findById(id);
+  if (!booking) {
+    return next(new AppError("الحجز غير موجود", 404));
+  }
+
+  if (req.user.role === "company" && booking.companyId.toString() !== req.user.companyId.toString()) {
+    return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
+  }
+
+  if (booking.status !== "completed") {
+    return next(new AppError("لا يمكن إضافة كاش باك إلا للحجوزات المكتملة", 400));
+  }
+
+  if (booking.cashbackAddedAfterCompletion) {
+    return next(new AppError("تم إضافة كاش باك لهذا الحجز مسبقاً", 400));
+  }
+
+  const settings = await Settings.findOne().sort({ createdAt: -1 });
+  const defaultCashbackPercentage = settings ? settings.cashbackAfterCompletionPercentage || 5 : 5;
+  const finalCashbackPercentage = cashbackPercentage || defaultCashbackPercentage;
+  const cashbackAmount = (booking.totalPrice * finalCashbackPercentage) / 100;
+
+  await User.findByIdAndUpdate(booking.userId, {
+    $inc: { walletBalance: cashbackAmount }
+  });
+
+  booking.cashbackAfterCompletion = cashbackAmount;
+  booking.cashbackAfterCompletionPercentage = finalCashbackPercentage;
+  booking.cashbackAddedAfterCompletion = true;
+  booking.cashbackAfterCompletionAddedAt = new Date();
+  booking.cashbackAfterCompletionAddedBy = req.user.id;
+
+  await booking.save();
+
+  const populatedBooking = await Booking.findById(booking._id)
+    .populate("userId", "name email phone")
+    .populate("carId", "brand model images licensePlate")
+    .populate("companyId", "name address phone");
+
+  res.status(200).json({
+    success: true,
+    booking: populatedBooking,
+    cashbackAmount,
+    cashbackPercentage: finalCashbackPercentage,
   });
 });

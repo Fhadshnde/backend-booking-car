@@ -44,7 +44,16 @@ const bookingSchema = new mongoose.Schema(
     driverLicense: { type: String },
     cancellationReason: String,
     cancelledAt: Date,
-    cancelledBy: { type: String, enum: ["user", "company", "admin"] }
+    cancelledBy: { type: String, enum: ["user", "company", "admin"] },
+    cashbackAfterCompletion: { type: Number, default: 0 },
+    cashbackAfterCompletionPercentage: { type: Number, default: 0 },
+    cashbackAddedAfterCompletion: { type: Boolean, default: false },
+    cashbackAfterCompletionAddedAt: { type: Date },
+    cashbackAfterCompletionAddedBy: { type: mongoose.Schema.ObjectId, ref: "User" },
+    cashbackAfterExpiry: { type: Number, default: 0 },
+    cashbackAfterExpiryPercentage: { type: Number, default: 0 },
+    cashbackAddedAfterExpiry: { type: Boolean, default: false },
+    cashbackAfterExpiryAddedAt: { type: Date },
   },
   { timestamps: true }
 );
