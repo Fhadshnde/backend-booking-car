@@ -17,7 +17,7 @@ const bookingSchema = new mongoose.Schema(
     depositPercentage: { type: Number, default: 0.3 },
     depositStatus: { 
       type: String, 
-      enum: ["pending", "paid", "refunded"], 
+      enum: ["pending", "pending_verification", "paid", "refunded"], 
       default: "pending" 
     },
     depositPaidAt: { type: Date },
@@ -25,12 +25,12 @@ const bookingSchema = new mongoose.Schema(
     remainingAmount: { type: Number, default: 0 },
     status: { 
       type: String, 
-      enum: ["pending", "confirmed", "on_trip", "completed", "cancelled"], 
+      enum: ["pending", "pending_verification", "confirmed", "on_trip", "completed", "cancelled", "payment_rejected"], 
       default: "pending" 
     },
     paymentStatus: { 
       type: String, 
-      enum: ["pending", "partial", "completed", "failed", "refunded"], 
+      enum: ["pending", "pending_verification", "partial", "completed", "failed", "refunded"], 
       default: "pending" 
     },
     paymentMethod: { 
@@ -38,6 +38,19 @@ const bookingSchema = new mongoose.Schema(
       enum: ["credit_card", "debit_card", "wallet", "bank_transfer", "cash"], 
       default: "credit_card" 
     },
+    paymentType: {
+      type: String,
+      enum: ["deposit", "remaining", "full"],
+      default: "deposit"
+    },
+    paymentVerificationStatus: {
+      type: String,
+      enum: ["pending", "verified", "rejected"],
+      default: "pending"
+    },
+    paymentVerificationNote: { type: String },
+    paymentVerifiedAt: { type: Date },
+    paymentVerifiedBy: { type: mongoose.Schema.ObjectId, ref: "User" },
     confirmationCode: { type: String, unique: true },
     transactionId: { type: String },
     pickupLocation: { type: String, required: true },

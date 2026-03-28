@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Booking from "../models/booking.model.js";
 import catchAsync from "../helpers/catchAsync.js";
 import AppError from "../helpers/AppError.js";
+import User from "../models/user.model.js";
 
 const generateFakePaymentId = () => {
   return `pay_${Math.random().toString(36).substr(2, 12)}`;
@@ -108,7 +109,7 @@ export const createPaymentIntent = catchAsync(async (req, res, next) => {
 });
 
 export const confirmPayment = catchAsync(async (req, res, next) => {
-  const { bookingId, paymentIntentId, paymentType } = req.body;
+  const { bookingId, paymentIntentId, paymentType, paymentMethod } = req.body;
 
   if (!paymentIntentId) {
     return next(new AppError("معرف الدفع غير صحيح", 400));
@@ -134,37 +135,43 @@ export const confirmPayment = catchAsync(async (req, res, next) => {
       return next(new AppError("تم دفع العربون مسبقاً", 400));
     }
 
-    booking.depositStatus = "paid";
-    booking.depositPaidAt = new Date();
-    booking.status = "confirmed";
-    booking.paymentStatus = "partial";
+    booking.depositStatus = "pending_verification";
+    booking.paymentStatus = "pending_verification";
+    booking.paymentVerificationStatus = "pending";
+    booking.status = "pending_verification";
     booking.transactionId = transactionId;
+    booking.paymentType = paymentType;
+    if (paymentMethod) {
+      booking.paymentMethod = paymentMethod;
+    }
   } 
   else if (paymentType === "remaining") {
     if (booking.paymentStatus === "completed") {
       return next(new AppError("تم دفع المبلغ كاملاً مسبقاً", 400));
     }
 
-    booking.paymentStatus = "completed";
-    booking.depositStatus = "paid";
-    if (!booking.depositPaidAt) {
-      booking.depositPaidAt = new Date();
-    }
+    booking.paymentStatus = "pending_verification";
+    booking.paymentVerificationStatus = "pending";
     booking.transactionId = transactionId;
+    booking.paymentType = paymentType;
+    if (paymentMethod) {
+      booking.paymentMethod = paymentMethod;
+    }
   }
   else if (paymentType === "full") {
     if (booking.paymentStatus === "completed") {
       return next(new AppError("تم دفع المبلغ كاملاً مسبقاً", 400));
     }
 
-    booking.paymentStatus = "completed";
-    booking.depositStatus = "paid";
-    booking.depositPaidAt = new Date();
-    booking.status = "confirmed";
+    booking.depositStatus = "pending_verification";
+    booking.paymentStatus = "pending_verification";
+    booking.paymentVerificationStatus = "pending";
+    booking.status = "pending_verification";
     booking.transactionId = transactionId;
-  }
-  else {
-    return next(new AppError("نوع الدفع غير صحيح", 400));
+    booking.paymentType = paymentType;
+    if (paymentMethod) {
+      booking.paymentMethod = paymentMethod;
+    }
   }
 
   await booking.save();
@@ -182,8 +189,85 @@ export const confirmPayment = catchAsync(async (req, res, next) => {
     transactionId,
     paymentType,
     amount: paymentType === "deposit" ? booking.deposit : (paymentType === "remaining" ? booking.remainingAmount : booking.totalPrice),
-    message: paymentType === "deposit" ? "تم دفع العربون وتأكيد الحجز بنجاح" : "تم إكمال الدفع بنجاح"
+    message: "تم استلام طلب الدفع بنجاح. سيتم مراجعة العملية من قبل الشركة خلال 24 ساعة.",
+    requiresVerification: true
   });
+});
+
+export const verifyPayment = catchAsync(async (req, res, next) => {
+  const { bookingId, status, note } = req.body;
+
+  if (req.user.role !== "company" && req.user.role !== "admin") {
+    return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
+  }
+
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
+    return next(new AppError("الحجز غير موجود", 404));
+  }
+
+  if (req.user.role === "company" && booking.companyId.toString() !== req.user.companyId.toString()) {
+    return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
+  }
+
+  if (booking.paymentVerificationStatus !== "pending") {
+    return next(new AppError("تمت مراجعة هذا الدفع مسبقاً", 400));
+  }
+
+  if (status === "verified") {
+    if (booking.paymentType === "deposit" || booking.paymentType === "full") {
+      booking.depositStatus = "paid";
+      booking.depositPaidAt = new Date();
+      booking.status = "confirmed";
+      booking.paymentStatus = booking.paymentType === "full" ? "completed" : "partial";
+    } else if (booking.paymentType === "remaining") {
+      booking.paymentStatus = "completed";
+      booking.depositStatus = "paid";
+      if (!booking.depositPaidAt) {
+        booking.depositPaidAt = new Date();
+      }
+    }
+    
+    booking.paymentVerificationStatus = "verified";
+    booking.paymentVerifiedAt = new Date();
+    booking.paymentVerifiedBy = req.user.id;
+    if (note) {
+      booking.paymentVerificationNote = note;
+    }
+    
+    await booking.save();
+    
+    res.status(200).json({
+      success: true,
+      booking,
+      message: "تم تأكيد الدفع وتأكيد الحجز بنجاح"
+    });
+    
+  } else if (status === "rejected") {
+    booking.paymentVerificationStatus = "rejected";
+    if (note) {
+      booking.paymentVerificationNote = note;
+    }
+    booking.status = "payment_rejected";
+    booking.paymentStatus = "failed";
+    
+    const paymentAmount = booking.paymentType === "deposit" ? booking.deposit : 
+                          (booking.paymentType === "remaining" ? booking.remainingAmount : booking.totalPrice);
+    
+    await User.findByIdAndUpdate(booking.userId, {
+      $inc: { walletBalance: paymentAmount }
+    });
+    
+    await booking.save();
+    
+    res.status(200).json({
+      success: true,
+      booking,
+      message: "تم رفض الدفع، وتم استرداد المبلغ إلى محفظتك"
+    });
+  } else {
+    return next(new AppError("حالة غير صحيحة", 400));
+  }
 });
 
 export const getPaymentStatus = catchAsync(async (req, res, next) => {
@@ -202,6 +286,8 @@ export const getPaymentStatus = catchAsync(async (req, res, next) => {
     paymentStatus: booking.paymentStatus,
     depositStatus: booking.depositStatus,
     bookingStatus: booking.status,
+    paymentVerificationStatus: booking.paymentVerificationStatus,
+    paymentVerificationNote: booking.paymentVerificationNote,
     depositPaidAt: booking.depositPaidAt,
     transactionId: booking.transactionId,
     deposit: booking.deposit,

@@ -36,7 +36,7 @@ export const createBooking = catchAsync(async (req, res, next) => {
 
   const conflictingBookings = await Booking.find({
     carId,
-    status: { $in: ["pending", "confirmed", "on_trip"] },
+    status: { $in: ["pending", "pending_verification", "confirmed", "on_trip"] },
     $or: [
       { startDate: { $lt: end }, endDate: { $gt: start } },
     ],
@@ -105,6 +105,7 @@ export const createBooking = catchAsync(async (req, res, next) => {
     insurancePrice: insurancePrice,
     totalPrice,
     deposit: depositAmount,
+    depositPercentage: depositPercentage,
     depositStatus: "pending",
     walletDiscount,
     remainingAmount: totalPrice - depositAmount,
@@ -138,7 +139,7 @@ export const getReservedDates = catchAsync(async (req, res, next) => {
 
   const bookings = await Booking.find({
     carId,
-    status: { $in: ["pending", "confirmed", "on_trip"] },
+    status: { $in: ["pending", "pending_verification", "confirmed", "on_trip"] },
   }).select("startDate endDate");
 
   const reservedDates = bookings.map((booking) => ({
@@ -327,6 +328,7 @@ export const updateBooking = catchAsync(async (req, res, next) => {
   const settings = await Settings.findOne().sort({ createdAt: -1 });
   const depositPercentage = settings ? settings.depositPercentage : 0.3;
   booking.deposit = booking.totalPrice * depositPercentage;
+  booking.depositPercentage = depositPercentage;
   booking.remainingAmount = booking.totalPrice - booking.deposit;
 
   await booking.save();
@@ -349,11 +351,12 @@ export const confirmBooking = catchAsync(async (req, res, next) => {
     return next(new AppError("غير مصرح لك بتنفيذ هذا الإجراء", 403));
   }
 
-  if (booking.status !== "pending") {
+  if (booking.status !== "pending_verification") {
     return next(new AppError("لا يمكن تأكيد حجز غير معلق", 400));
   }
 
   booking.status = "confirmed";
+
   await booking.save();
 
   const populatedBooking = await Booking.findById(booking._id)
