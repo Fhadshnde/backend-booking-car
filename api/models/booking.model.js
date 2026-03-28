@@ -14,6 +14,7 @@ const bookingSchema = new mongoose.Schema(
     insurancePrice: { type: Number, default: 0 },
     totalPrice: { type: Number, required: true },
     deposit: { type: Number, default: 0 },
+    depositPercentage: { type: Number, default: 0.3 },
     depositStatus: { 
       type: String, 
       enum: ["pending", "paid", "refunded"], 
