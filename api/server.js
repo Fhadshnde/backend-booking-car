@@ -141,6 +141,9 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
+import testMongoRouter from "./routes/testMongo.js";
+app.use("/api", testMongoRouter);
+
 // ============= Error Handling =============
 // Error handler
 app.use((err, req, res, next) => {
