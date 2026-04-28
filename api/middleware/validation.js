@@ -28,9 +28,9 @@ export const changePasswordSchema = Joi.object({
 
 // ============= Booking Schemas =============
 export const createBookingSchema = Joi.object({
-  carId: Joi.string().hex().length(24).required()
+  carId: Joi.number().integer().positive().required()
     .messages({ "any.required": "معرف السيارة مطلوب" }),
-  companyId: Joi.string().hex().length(24).required()
+  companyId: Joi.number().integer().positive().required()
     .messages({ "any.required": "معرف الشركة مطلوب" }),
   startDate: Joi.date().iso().required()
     .messages({ "any.required": "تاريخ البداية مطلوب" }),
@@ -45,28 +45,27 @@ export const createBookingSchema = Joi.object({
 
 // ============= Car Schemas =============
 export const createCarSchema = Joi.object({
-  brand: Joi.string().trim().required()
+  brandId: Joi.number().integer().required()
     .messages({ "any.required": "الماركة مطلوبة" }),
+  categoryId: Joi.number().integer().required()
+    .messages({ "any.required": "الفئة مطلوبة" }),
   model: Joi.string().trim().required()
     .messages({ "any.required": "الموديل مطلوب" }),
   year: Joi.number().integer().min(1990).max(new Date().getFullYear() + 1).required()
     .messages({ "any.required": "سنة الصنع مطلوبة" }),
   licensePlate: Joi.string().trim().required()
     .messages({ "any.required": "رقم اللوحة مطلوب" }),
-  companyId: Joi.string().hex().length(24).allow(null),
   pricePerDay: Joi.number().positive().required()
-    .messages({ "any.required": "السعر اليومي مطلوب", "number.positive": "السعر يجب أن يكون رقم موجب" }),
-    category: Joi.string().regex(/^[0-9a-fA-F]{24}$/).required()
-    .messages({ 
-      "any.required": "الفئة مطلوبة",
-      "string.pattern.base": "معرف الفئة غير صالح" 
-    }),
+    .messages({ "any.required": "السعر اليومي مطلوب" }),
+  insurancePrice: Joi.number().min(0).allow(null, ""),
   color: Joi.string().trim().allow("", null),
   transmission: Joi.string().valid("manual", "automatic").default("automatic"),
   fuelType: Joi.string().valid("petrol", "diesel", "electric").default("petrol"),
-  seats: Joi.number().integer().min(1).max(50).default(5),
+  seats: Joi.number().integer().min(1).default(5),
   description: Joi.string().trim().max(1000).allow("", null),
-  images: Joi.array().items(Joi.string()).allow(null)
+  images: Joi.array().items(Joi.string()).allow(null),
+  latitude: Joi.number().allow(null),
+  longitude: Joi.number().allow(null)
 });
 
 export const updateCarSchema = Joi.object({
@@ -83,7 +82,7 @@ export const createCompanySchema = Joi.object({
     .messages({ "any.required": "اسم الشركة مطلوب" }),
   phone: Joi.string().trim().required()
     .messages({ "any.required": "رقم الهاتف مطلوب" }),
-  ownerId: Joi.string().hex().length(24).required()
+  ownerId: Joi.number().integer().positive().required()
     .messages({ "any.required": "معرف المالك مطلوب" }),
   address: Joi.string().trim().max(200).allow("", null),
   description: Joi.string().trim().max(500).allow("", null),
@@ -95,7 +94,7 @@ export const createCompanySchema = Joi.object({
 
 // ============= Commission Schemas =============
 export const createCommissionSchema = Joi.object({
-  companyId: Joi.string().hex().length(24).required()
+  companyId: Joi.number().integer().positive().required()
     .messages({ "any.required": "معرف الشركة مطلوب" }),
   percentage: Joi.number().min(0).max(100).default(10),
   fixedAmount: Joi.number().min(0).default(0),
@@ -111,7 +110,7 @@ export const updateCommissionSchema = Joi.object({
 
 // ============= Review Schemas =============
 export const createReviewSchema = Joi.object({
-  bookingId: Joi.string().hex().length(24).required()
+  bookingId: Joi.number().integer().positive().required()
     .messages({ "any.required": "معرف الحجز مطلوب" }),
   rating: Joi.number().integer().min(1).max(5).required()
     .messages({ "any.required": "التقييم مطلوب", "number.min": "التقييم يجب أن يكون 1 على الأقل", "number.max": "التقييم يجب أن يكون 5 على الأكثر" }),

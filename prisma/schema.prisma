@@ -1,0 +1,423 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int            @id @default(autoincrement())
+  name               String
+  password           String
+  phone              String         @unique
+  role               String         @default("user")
+  walletBalance      Float          @default(0)
+  isActive           Boolean        @default(true)
+  profileImage       String?
+  address            String?
+  city               String?
+  country            String?
+  dateOfBirth        DateTime?
+  companyId          Int?
+  lastLogin          DateTime?
+  
+  // KYC & Security Fields
+  identityStatus     String         @default("unverified") // unverified, pending, approved, rejected
+  idCardImage        String?
+  driverLicenseImage String?
+  
+  // Tech & UX Fields
+  fcmToken           String?
+  googleId           String?        @unique
+  appleId            String?        @unique
+  preferredLanguage  String         @default("ar") // ar, en
+  preferredTheme     String         @default("dark") // light, dark
+  
+  // Real-time tracking
+  latitude           Float?
+  longitude          Float?
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  bookings           Booking[]
+  favorites          Favorite[]
+  notifications      Notification[]
+  reviews            Review[]
+  company            Company?       @relation(fields: [companyId], references: [id])
+  
+  // Chat & Support Relations
+  conversations      Conversation[]
+  sentMessages       Message[]      @relation("SentMessages")
+  tickets            Ticket[]
+  ticketMessages     TicketMessage[]
+  topUpRequests      WalletTopUpRequest[]
+}
+
+model Company {
+  id                Int            @id @default(autoincrement())
+  name              String
+  address           String?
+  city              String?
+  logo              String?
+  phone             String?
+  rating            Float          @default(0)
+  totalCars         Int            @default(0)
+  approvedAt        DateTime?
+  country           String?        @default("Iraq")
+  coverImage        String?
+  createdAt         DateTime       @default(now())
+  description       String?
+  email             String?
+  facebook          String?
+  identityDocs      String[]
+  instagram         String?
+  isActive          Boolean        @default(true)
+  isApproved        Boolean        @default(false)
+  isRejected        Boolean        @default(false)
+  latitude          Float?
+  licenseNumber     String
+  longitude         Float?
+  rejectionReason   String?
+  taxNumber         String?
+  totalBookings     Int            @default(0)
+  totalReviews      Int            @default(0)
+  updatedAt         DateTime       @updatedAt
+  website           String?
+  workingHoursClose String?
+  workingHoursOpen  String?
+  bookings          Booking[]
+  cars              Car[]
+  commissions       Commission[]
+  notifications     Notification[]
+  reviews           Review[]
+  users             User[]
+  
+  // Chat & Fleet Relations
+  conversations     Conversation[]
+  damageReports     DamageReport[]
+  drivers           Driver[]
+
+  @@index([latitude, longitude])
+}
+
+model Car {
+  id             Int        @id @default(autoincrement())
+  brandId        Int
+  model          String
+  year           Int
+  licensePlate   String     @unique
+  companyId      Int
+  categoryId     Int
+  pricePerDay    Float
+  discountPrice  Float      @default(0)
+  offerEndsAt    DateTime?
+  color          String?
+  transmission   String     @default("automatic")
+  fuelType       String     @default("petrol")
+  seats          Int        @default(5)
+  mileage        Int        @default(0)
+  images         String[]
+  description    String?
+  features       String[]
+  isAvailable    Boolean    @default(true)
+  isSuspended    Boolean    @default(false)
+  rating         Float      @default(0)
+  totalReviews   Int        @default(0)
+  totalBookings  Int        @default(0)
+  latitude         Float?
+  longitude        Float?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  insurancePrice   Float      @default(0)
+  driverPricePerDay Float      @default(0)
+  
+  // Fleet Management Fields
+  maintenanceDate  DateTime?
+  insuranceExpiry  DateTime?
+  inspectionExpiry DateTime?
+
+  bookings         Booking[]
+  brand            Brand      @relation(fields: [brandId], references: [id])
+  category         Category   @relation(fields: [categoryId], references: [id])
+  company          Company    @relation(fields: [companyId], references: [id])
+  favorites        Favorite[]
+  reviews          Review[]
+  damageReports    DamageReport[]
+  ads              Ad[]
+
+  @@index([latitude, longitude])
+}
+
+model Driver {
+  id            Int       @id @default(autoincrement())
+  companyId     Int
+  name          String
+  phone         String    @unique
+  licenseNumber String    @unique
+  rating        Float     @default(5.0)
+  image         String?
+  isAvailable   Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  company       Company   @relation(fields: [companyId], references: [id])
+  bookings      Booking[]
+}
+
+model PromoCode {
+  id            Int       @id @default(autoincrement())
+  code          String    @unique
+  type          String    @default("percentage") // percentage, fixed
+  value         Float
+  minOrderValue Float     @default(0)
+  maxDiscount   Float?
+  startDate     DateTime
+  endDate       DateTime
+  isActive      Boolean   @default(true)
+  usageLimit    Int?
+  usedCount     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  
+  bookings      Booking[]
+}
+
+model WalletTopUpRequest {
+  id         Int      @id @default(autoincrement())
+  amount     Float
+  status     String   @default("pending") // pending, approved, rejected
+  proofImage String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id])
+  userId     Int
+}
+
+model Booking {
+  id                             Int            @id @default(autoincrement())
+  carId                          Int
+  companyId                      Int
+  createdAt                      DateTime       @default(now())
+  endDate                        DateTime
+  startDate                      DateTime
+  status                         String         @default("pending")
+  totalPrice                     Float
+  userId                         Int
+  cashbackAddedAfterCompletion   Boolean        @default(false)
+  cashbackAfterCompletion        Float          @default(0)
+  cashbackAfterCompletionAddedAt DateTime?
+  deposit                        Float          @default(0)
+  driverLicense                  String?
+  dropoffLocation                String
+  paymentStatus                  String         @default("pending")
+  pickupLocation                 String
+  pricePerDay                    Float
+  totalDays                      Int
+  updatedAt                      DateTime       @updatedAt
+  confirmationCode               String         @unique
+  insurance                      Boolean        @default(false)
+  insurancePrice                 Float          @default(0)
+  walletDiscount                 Float          @default(0)
+  
+  // Promo & Driver Integration
+  promoCodeId                    Int?
+  discountAmount                 Float          @default(0)
+  hasDriver                      Boolean        @default(false)
+  driverId                       Int?
+  driverPrice                    Float          @default(0)
+  
+  // Real-time Trip Tracking
+  currentLat                     Float?
+  currentLng                     Float?
+  
+  // Maps Integration
+  pickupLat                      Float?
+  pickupLng                      Float?
+  dropoffLat                     Float?
+  dropoffLng                     Float?
+
+  car                            Car            @relation(fields: [carId], references: [id])
+  company                        Company        @relation(fields: [companyId], references: [id])
+  user                           User           @relation(fields: [userId], references: [id])
+  promoCode                      PromoCode?     @relation(fields: [promoCodeId], references: [id])
+  driver                         Driver?        @relation(fields: [driverId], references: [id])
+  notifications                  Notification[]
+  review                         Review?
+  damageReport                   DamageReport?
+}
+
+model Commission {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  percentage  Float    @default(10)
+  fixedAmount Float    @default(0)
+  updatedBy   Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String
+  message   String
+  type      String   @default("general")
+  isRead    Boolean  @default(false)
+  bookingId Int?
+  companyId Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  booking   Booking? @relation(fields: [bookingId], references: [id])
+  company   Company? @relation(fields: [companyId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Brand {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  logo        String?
+  createdAt   DateTime @default(now())
+  description String?
+  isActive    Boolean  @default(true)
+  cars        Car[]
+}
+
+model Category {
+  id          Int     @id @default(autoincrement())
+  name        String
+  icon        String?
+  description String?
+  isActive    Boolean @default(true)
+  slug        String?
+  cars        Car[]
+}
+
+model Ad {
+  id                 Int      @id @default(autoincrement())
+  title              String
+  image              String
+  discountPercentage Float    @default(0)
+  cars               Car[]
+  isActive           Boolean  @default(true)
+  endDate            DateTime
+  startDate          DateTime @default(now())
+  subTitle           String?
+}
+
+model Setting {
+  id                 Int      @id @default(autoincrement())
+  depositPercentage  Float    @default(0.3)
+  insurancePrice     Float    @default(50000)
+  cashbackPercentage Float    @default(0.05)
+  minCashbackToUse   Float    @default(10000)
+  defaultDriverPrice Float    @default(15000)
+  updatedBy          Int
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Favorite {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  carId     Int
+  createdAt DateTime @default(now())
+  car       Car      @relation(fields: [carId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, carId])
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  carId     Int
+  companyId Int
+  bookingId Int      @unique
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  car       Car      @relation(fields: [carId], references: [id])
+  company   Company  @relation(fields: [companyId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+// ==========================================
+// NEW MODELS: Chat & Support System
+// ==========================================
+
+model Conversation {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  companyId Int
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  user      User      @relation(fields: [userId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
+  messages  Message[]
+  
+  @@unique([userId, companyId])
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId Int
+  senderId       Int
+  content        String
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+}
+
+model Ticket {
+  id        Int             @id @default(autoincrement())
+  userId    Int
+  subject   String
+  status    String          @default("open") // open, in_progress, closed
+  priority  String          @default("normal") // low, normal, high
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  
+  user      User            @relation(fields: [userId], references: [id])
+  messages  TicketMessage[]
+}
+
+model TicketMessage {
+  id        Int      @id @default(autoincrement())
+  ticketId  Int
+  senderId  Int
+  content   String
+  createdAt DateTime @default(now())
+  
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  sender    User     @relation(fields: [senderId], references: [id])
+}
+
+// ==========================================
+// NEW MODEL: Fleet Management (Damage Reports)
+// ==========================================
+
+model DamageReport {
+  id            Int      @id @default(autoincrement())
+  bookingId     Int      @unique
+  carId         Int
+  companyId     Int
+  description   String
+  images        String[]
+  estimatedCost Float    @default(0)
+  isResolved    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  booking       Booking  @relation(fields: [bookingId], references: [id])
+  car           Car      @relation(fields: [carId], references: [id])
+  company       Company  @relation(fields: [companyId], references: [id])
+}
+

@@ -1,19 +1,26 @@
-import Favorite from "../models/favorite.model.js";
-import Car from "../models/car.model.js";
+import { prisma } from "../lib/prisma.js";
 
 export const toggleFavorite = async (req, res) => {
   try {
     const { carId } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
-    const existingFavorite = await Favorite.findOne({ userId, carId });
+    const existingFavorite = await prisma.favorite.findUnique({
+      where: {
+        userId_carId: { userId, carId: parseInt(carId) }
+      }
+    });
 
     if (existingFavorite) {
-      await Favorite.findByIdAndDelete(existingFavorite._id);
+      await prisma.favorite.delete({
+        where: { id: existingFavorite.id }
+      });
       return res.status(200).json({ success: true, isFavorite: false, message: "Removed from favorites" });
     }
 
-    await Favorite.create({ userId, carId });
+    await prisma.favorite.create({
+      data: { userId, carId: parseInt(carId) }
+    });
     res.status(201).json({ success: true, isFavorite: true, message: "Added to favorites" });
   } catch (error) {
     res.status(500).json({ success: false, message: "Internal server error" });
@@ -22,17 +29,20 @@ export const toggleFavorite = async (req, res) => {
 
 export const getMyFavorites = async (req, res) => {
   try {
-    const favorites = await Favorite.find({ userId: req.user._id })
-      .populate({
-        path: "carId",
-        populate: [
-          { path: "brand", select: "name logo" },
-          { path: "category", select: "name icon" }
-        ]
-      })
-      .lean();
+    const favorites = await prisma.favorite.findMany({
+      where: { userId: req.user.id },
+      include: {
+        car: {
+          include: {
+            brand: { select: { name: true, logo: true } },
+            category: { select: { name: true, icon: true } },
+            company: { select: { name: true, rating: true } }
+          }
+        }
+      }
+    });
 
-    const cars = favorites.map(fav => fav.carId).filter(car => car !== null);
+    const cars = favorites.map(fav => fav.car).filter(car => car !== null);
 
     res.status(200).json({
       success: true,

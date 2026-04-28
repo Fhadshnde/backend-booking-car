@@ -1,16 +1,15 @@
-import Commission from "../models/Commission.js";
+import { prisma } from "../lib/prisma.js";
 
 /**
  * حساب العمولة لشركة معينة
- * @param {String} companyId - معرف الشركة
+ * @param {Number} companyId - معرف الشركة
  * @param {Number} amount - المبلغ الإجمالي
  * @returns {Promise<Object>} تفاصيل العمولة
  */
 export const calculateCommissionForCompany = async (companyId, amount) => {
   try {
-    const commission = await Commission.findOne({
-      company: companyId,
-      isActive: true,
+    const commission = await prisma.commission.findFirst({
+      where: { companyId: parseInt(companyId) }
     });
 
     if (!commission) {
@@ -33,7 +32,7 @@ export const calculateCommissionForCompany = async (companyId, amount) => {
       fixedAmount: commission.fixedAmount,
       netAmount: parseFloat(netAmount.toFixed(2)),
       isApplied: true,
-      commissionId: commission._id,
+      commissionId: commission.id,
     };
   } catch (error) {
     console.error("خطأ في حساب العمولة:", error);
@@ -50,47 +49,34 @@ export const calculateCommissionForCompany = async (companyId, amount) => {
 
 /**
  * الحصول على إحصائيات العمولات
- * @param {String} companyId - معرف الشركة (اختياري)
+ * @param {Number} companyId - معرف الشركة (اختياري)
  * @returns {Promise<Object>} إحصائيات العمولات
  */
 export const getCommissionStatistics = async (companyId = null) => {
   try {
-    let query = {};
+    let where = {};
     if (companyId) {
-      query = { company: companyId };
+      where = { companyId: parseInt(companyId) };
     }
 
-    const commissions = await Commission.find(query).populate(
-      "company",
-      "name "
-    );
+    const commissions = await prisma.commission.findMany({
+      where,
+      include: {
+        company: { select: { name: true } }
+      }
+    });
 
-    const activeCommissions = commissions.filter((c) => c.isActive);
-    const inactiveCommissions = commissions.filter((c) => !c.isActive);
-
-    const avgPercentage =
-      activeCommissions.length > 0
-        ? (
-            activeCommissions.reduce((sum, c) => sum + c.percentage, 0) /
-            activeCommissions.length
-          ).toFixed(2)
-        : 0;
-
-    const avgFixedAmount =
-      activeCommissions.length > 0
-        ? (
-            activeCommissions.reduce((sum, c) => sum + c.fixedAmount, 0) /
-            activeCommissions.length
-          ).toFixed(2)
-        : 0;
+    const avgStats = await prisma.commission.aggregate({
+      where,
+      _avg: { percentage: true, fixedAmount: true },
+      _count: { id: true }
+    });
 
     return {
       success: true,
       totalCommissions: commissions.length,
-      activeCount: activeCommissions.length,
-      inactiveCount: inactiveCommissions.length,
-      averagePercentage: parseFloat(avgPercentage),
-      averageFixedAmount: parseFloat(avgFixedAmount),
+      averagePercentage: avgStats._avg.percentage || 0,
+      averageFixedAmount: avgStats._avg.fixedAmount || 0,
       commissions: commissions,
     };
   } catch (error) {
@@ -156,19 +142,21 @@ export const validateFixedAmount = (fixedAmount) => {
 
 /**
  * مقارنة العمولات بين شركتين
- * @param {String} companyId1 - معرف الشركة الأولى
- * @param {String} companyId2 - معرف الشركة الثانية
+ * @param {Number} companyId1 - معرف الشركة الأولى
+ * @param {Number} companyId2 - معرف الشركة الثانية
  * @returns {Promise<Object>} المقارنة
  */
 export const compareCommissions = async (companyId1, companyId2) => {
   try {
-    const commission1 = await Commission.findOne({
-      company: companyId1,
-    }).populate("company", "name");
+    const commission1 = await prisma.commission.findFirst({
+      where: { companyId: parseInt(companyId1) },
+      include: { company: { select: { name: true } } }
+    });
 
-    const commission2 = await Commission.findOne({
-      company: companyId2,
-    }).populate("company", "name");
+    const commission2 = await prisma.commission.findFirst({
+      where: { companyId: parseInt(companyId2) },
+      include: { company: { select: { name: true } } }
+    });
 
     if (!commission1 || !commission2) {
       return {
@@ -239,20 +227,20 @@ export const applyBulkCommission = async (
       };
     }
 
-    const updateResult = await Commission.updateMany(
-      { company: { $in: companyIds } },
-      {
-        $set: {
-          percentage: percentage,
-          fixedAmount: fixedAmount,
-        },
+    const parsedIds = companyIds.map(id => parseInt(id));
+
+    const updateResult = await prisma.commission.updateMany({
+      where: { companyId: { in: parsedIds } },
+      data: {
+        percentage: percentage,
+        fixedAmount: fixedAmount,
       }
-    );
+    });
 
     return {
       success: true,
-      message: `تم تطبيق العمولة على ${updateResult.modifiedCount} شركة`,
-      modifiedCount: updateResult.modifiedCount,
+      message: `تم تطبيق العمولة على ${updateResult.count} شركة`,
+      modifiedCount: updateResult.count,
     };
   } catch (error) {
     console.error("خطأ في تطبيق العمولة الجماعية:", error);

@@ -1,38 +1,80 @@
-import Ad from "../models/ad.model.js";
-import catchAsync from "../helpers/catchAsync.js";
-import AppError from "../helpers/AppError.js";
+import { prisma } from "../lib/prisma.js";
 
-export const getAllAds = catchAsync(async (req, res, next) => {
-  const ads = await Ad.find({ isActive: true }).populate("carIds");
-  res.status(200).json({
-    success: true,
-    results: ads.length,
-    ads
-  });
-});
+export const getAllAds = async (req, res) => {
+  try {
+    const ads = await prisma.ad.findMany({ 
+      where: { isActive: true },
+      include: { cars: true } 
+    });
+    res.status(200).json({ success: true, results: ads.length, ads });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch ads" });
+  }
+};
 
-export const getAdById = catchAsync(async (req, res, next) => {
-  const ad = await Ad.findById(req.params.id).populate("carIds");
-  if (!ad) return next(new AppError("Ad not found", 404));
-  res.status(200).json({ success: true, ad });
-});
+export const getAdById = async (req, res) => {
+  try {
+    const ad = await prisma.ad.findUnique({ 
+      where: { id: parseInt(req.params.id) },
+      include: { cars: true } // سيقوم Prisma بجلب تفاصيل كل السيارات المرتبطة تلقائياً
+    });
+    
+    if (!ad) return res.status(404).json({ success: false, message: "Ad not found" });
+    
+    res.status(200).json({ success: true, ad });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch ad" });
+  }
+};
 
-export const createAd = catchAsync(async (req, res, next) => {
-  const newAd = await Ad.create(req.body);
-  res.status(201).json({ success: true, ad: newAd });
-});
+export const createAd = async (req, res) => {
+  try {
+    const { title, subTitle, image, discountPercentage, carIds, endDate, isActive } = req.body;
 
-export const updateAd = catchAsync(async (req, res, next) => {
-  const ad = await Ad.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-    runValidators: true
-  });
-  if (!ad) return next(new AppError("Ad not found", 404));
-  res.status(200).json({ success: true, ad });
-});
+    const ad = await prisma.ad.create({
+      data: {
+        title,
+        subTitle,
+        image,
+        discountPercentage: parseFloat(discountPercentage),
+        cars: {
+          connect: carIds.map(id => ({ id: parseInt(id) }))
+        },
+        isActive: isActive !== undefined ? isActive : true,
+        endDate: new Date(endDate)
+      }
+    });
+    res.status(201).json({ success: true, ad });
+  } catch (error) {
+    console.error("Error creating ad:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
-export const deleteAd = catchAsync(async (req, res, next) => {
-  const ad = await Ad.findByIdAndDelete(req.params.id);
-  if (!ad) return next(new AppError("Ad not found", 404));
-  res.status(204).json({ success: true, data: null });
-});
+export const updateAd = async (req, res) => {
+  try {
+    const { carIds, ...updateData } = req.body;
+    
+    const ad = await prisma.ad.update({
+      where: { id: parseInt(req.params.id) },
+      data: {
+        ...updateData,
+        cars: carIds ? {
+          set: carIds.map(id => ({ id: parseInt(id) }))
+        } : undefined
+      }
+    });
+    res.status(200).json({ success: true, ad });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to update ad" });
+  }
+};
+
+export const deleteAd = async (req, res) => {
+  try {
+    await prisma.ad.delete({ where: { id: parseInt(req.params.id) } });
+    res.status(204).json({ success: true, data: null });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to delete ad" });
+  }
+};

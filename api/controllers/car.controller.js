@@ -1,17 +1,14 @@
-import mongoose from "mongoose";
-import Car from "../models/car.model.js";
-import Company from "../models/company.model.js";
-import Booking from "../models/booking.model.js";
-import Brand from "../models/brand.model.js";
-import Ad from "../models/ad.model.js";
-import { paginate } from "../helpers/pagination.helper.js";
+import { prisma } from "../lib/prisma.js";
 
-const applyDiscountToCar = async (car) => {
+export const applyDiscountToCar = async (car) => {
   if (!car) return null;
   
-  const activeAd = await Ad.findOne({
-    carIds: car._id,
-    isActive: true
+  const activeAd = await prisma.ad.findFirst({
+    where: {
+      cars: { some: { id: car.id } },
+      isActive: true,
+      endDate: { gte: new Date() }
+    }
   });
   
   let discountPercentage = 0;
@@ -20,46 +17,61 @@ const applyDiscountToCar = async (car) => {
   if (activeAd) {
     discountPercentage = activeAd.discountPercentage;
     discountAd = {
-      id: activeAd._id,
+      id: activeAd.id,
       title: activeAd.title,
       discountPercentage: activeAd.discountPercentage,
       image: activeAd.image
     };
   }
+
+  // Check if car has its own direct discountPrice that is better or if no Ad exists
+  const today = new Date();
+  const hasDirectDiscount = car.discountPrice > 0 && (!car.offerEndsAt || new Date(car.offerEndsAt) > today);
   
   const originalPrice = car.pricePerDay;
-  const discountedPrice = originalPrice * (1 - discountPercentage / 100);
+  let currentPrice = originalPrice;
+
+  if (discountPercentage > 0) {
+    currentPrice = originalPrice * (1 - discountPercentage / 100);
+  } else if (hasDirectDiscount) {
+    currentPrice = car.discountPrice;
+    discountPercentage = Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
+  }
   
   return {
-    ...car.toObject ? car.toObject() : car,
-    originalPrice: originalPrice,
-    discountedPrice: discountedPrice,
-    currentPrice: discountedPrice,
-    discountPercentage: discountPercentage,
+    ...car,
+    originalPrice,
+    currentPrice,
+    discountedPrice: currentPrice,
+    discountPercentage,
     hasDiscount: discountPercentage > 0,
-    discountAd: discountAd
+    discountAd
   };
 };
 
-const applyDiscountToCars = async (cars) => {
+export const applyDiscountToCars = async (cars) => {
   if (!cars || cars.length === 0) return [];
   
-  const carIds = cars.map(car => car._id);
+  const carIds = cars.map(car => car.id);
   
-  const activeAds = await Ad.find({
-    carIds: { $in: carIds },
-    isActive: true
+  const activeAds = await prisma.ad.findMany({
+    where: {
+      cars: { some: { id: { in: carIds } } },
+      isActive: true,
+      endDate: { gte: new Date() }
+    },
+    include: { cars: { select: { id: true } } }
   });
   
   const discountMap = new Map();
   activeAds.forEach(ad => {
-    ad.carIds.forEach(carId => {
-      const carIdStr = carId.toString();
-      if (!discountMap.has(carIdStr) || discountMap.get(carIdStr).discountPercentage < ad.discountPercentage) {
-        discountMap.set(carIdStr, {
+    ad.cars.forEach(c => {
+      const carId = c.id;
+      if (!discountMap.has(carId) || discountMap.get(carId).discountPercentage < ad.discountPercentage) {
+        discountMap.set(carId, {
           discountPercentage: ad.discountPercentage,
           discountAd: {
-            id: ad._id,
+            id: ad.id,
             title: ad.title,
             discountPercentage: ad.discountPercentage,
             image: ad.image
@@ -70,19 +82,27 @@ const applyDiscountToCars = async (cars) => {
   });
   
   return cars.map(car => {
-    const carIdStr = car._id.toString();
-    const discount = discountMap.get(carIdStr);
+    const discount = discountMap.get(car.id);
     const discountPercentage = discount ? discount.discountPercentage : 0;
     const originalPrice = car.pricePerDay;
-    const discountedPrice = originalPrice * (1 - discountPercentage / 100);
+    const today = new Date();
+    const hasDirectDiscount = car.discountPrice > 0 && (!car.offerEndsAt || new Date(car.offerEndsAt) > today);
+
+    let finalDiscountPercent = discountPercentage;
+    let finalCurrentPrice = originalPrice * (1 - discountPercentage / 100);
+
+    if (hasDirectDiscount && (discountPercentage === 0 || car.discountPrice < finalCurrentPrice)) {
+      finalCurrentPrice = car.discountPrice;
+      finalDiscountPercent = Math.round(((originalPrice - finalCurrentPrice) / originalPrice) * 100);
+    }
     
     return {
-      ...car.toObject ? car.toObject() : car,
-      originalPrice: originalPrice,
-      discountedPrice: discountedPrice,
-      currentPrice: discountedPrice,
-      discountPercentage: discountPercentage,
-      hasDiscount: discountPercentage > 0,
+      ...car,
+      originalPrice,
+      discountedPrice: finalCurrentPrice,
+      currentPrice: finalCurrentPrice,
+      discountPercentage: finalDiscountPercent,
+      hasDiscount: finalDiscountPercent > 0,
       discountAd: discount ? discount.discountAd : null
     };
   });
@@ -91,8 +111,8 @@ const applyDiscountToCars = async (cars) => {
 export const getCars = async (req, res) => {
   try {
     const { 
-      page, 
-      limit, 
+      page = 1, 
+      limit = 10, 
       isAvailable, 
       categoryId, 
       brandId,
@@ -103,307 +123,256 @@ export const getCars = async (req, res) => {
       sort 
     } = req.query;
 
-    const filter = { isSuspended: false };
+    const skip = (Number(page) - 1) * Number(limit);
+    const where = { isSuspended: false };
 
     if (req.user && req.user.role.toLowerCase() === "company") {
-      filter.companyId = req.user.companyId;
+      where.companyId = req.user.companyId;
     } else {
-      filter.isAvailable = true;
+      where.isAvailable = true;
     }
 
-    if (isAvailable === "true") filter.isAvailable = true;
-    if (categoryId) filter.category = categoryId;
-    if (brandId) filter.brand = brandId;
-    if (transmission) filter.transmission = transmission;
-    if (fuelType) filter.fuelType = fuelType;
+    if (isAvailable === "true") where.isAvailable = true;
+    if (categoryId) where.categoryId = Number(categoryId);
+    if (brandId) where.brandId = Number(brandId);
+    if (transmission) where.transmission = transmission;
+    if (fuelType) where.fuelType = fuelType;
     
     if (minPrice || maxPrice) {
-      filter.pricePerDay = {};
-      if (minPrice) filter.pricePerDay.$gte = Number(minPrice);
-      if (maxPrice) filter.pricePerDay.$lte = Number(maxPrice);
+      where.pricePerDay = {};
+      if (minPrice) where.pricePerDay.gte = Number(minPrice);
+      if (maxPrice) where.pricePerDay.lte = Number(maxPrice);
     }
 
-    let sortOptions = { createdAt: -1 };
-    if (sort === "price_asc") sortOptions = { pricePerDay: 1 };
-    if (sort === "price_desc") sortOptions = { pricePerDay: -1 };
+    let orderBy = { createdAt: "desc" };
+    if (sort === "price_asc") orderBy = { pricePerDay: "asc" };
+    if (sort === "price_desc") orderBy = { pricePerDay: "desc" };
 
-    const result = await paginate(Car, filter, {
-      page,
-      limit,
-      sort: sortOptions,
-      populate: [
-        { path: "category", select: "name" },
-        { path: "brand", select: "name logo" }
-      ]
-    });
-
-    const carsData = result.data || result.cars || [];
-    const carsWithDiscount = await applyDiscountToCars(carsData);
-    
-    let filteredCars = carsWithDiscount;
-    if (minPrice || maxPrice) {
-      filteredCars = carsWithDiscount.filter(car => {
-        const priceToFilter = car.currentPrice;
-        if (minPrice && priceToFilter < Number(minPrice)) return false;
-        if (maxPrice && priceToFilter > Number(maxPrice)) return false;
-        return true;
-      });
-    }
-    
-    res.status(200).json({
-      success: true,
-      ...result,
-      data: filteredCars,
-      cars: filteredCars
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: "فشل في جلب البيانات" });
-  }
-};
-
-export const getRecommendedCars = async (req, res) => {
-  try {
-    const cars = await Car.find({
-      isAvailable: true,
-      isSuspended: false
-    })
-      .sort({ totalBookings: -1, rating: -1 })
-      .limit(8)
-      .populate("companyId", "name rating")
-      .populate("category", "name icon")
-      .populate("brand", "name logo")
-      .lean();
+    const [cars, total] = await Promise.all([
+      prisma.car.findMany({
+        where,
+        skip,
+        take: Number(limit),
+        orderBy,
+        include: {
+          category: { select: { name: true } },
+          brand: { select: { name: true, logo: true } }
+        }
+      }),
+      prisma.car.count({ where })
+    ]);
 
     const carsWithDiscount = await applyDiscountToCars(cars);
-
+    
     res.status(200).json({
       success: true,
-      cars: carsWithDiscount
+      data: carsWithDiscount,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        pages: Math.ceil(total / Number(limit))
+      }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "فشل في جلب السيارات الموصى بها" });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const getCar = async (req, res) => {
   try {
-    const car = await Car.findById(req.params.id)
-      .populate("companyId", "name phone address rating city")
-      .populate("category", "name icon")
-      .populate("brand", "name logo")
-      .lean();
+    const car = await prisma.car.findUnique({
+      where: { id: Number(req.params.id) },
+      include: {
+        company: { select: { name: true, phone: true, address: true, rating: true, city: true } },
+        category: { select: { name: true, icon: true } },
+        brand: { select: { name: true, logo: true } }
+      }
+    });
     
     if (!car) return res.status(404).json({ success: false, message: "Car not found" });
     
     const carWithDiscount = await applyDiscountToCar(car);
-    
     res.status(200).json({ success: true, car: carWithDiscount });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to fetch car" });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const createCar = async (req, res) => {
   try {
-    let data = req.body;
+    const {
+      model,
+      brandId,
+      categoryId,
+      companyId,
+      pricePerDay,
+      insurancePrice,
+      year,
+      licensePlate,
+      color,
+      transmission,
+      fuelType,
+      seats,
+      mileage,
+      description,
+      images
+    } = req.body;
 
-    if (req.user.role.toLowerCase() === "company") {
-      data.companyId = req.user.companyId;
+    const targetCompanyId = req.user.role.toLowerCase() === "company" 
+      ? req.user.companyId 
+      : Number(companyId);
+
+    if (!targetCompanyId) {
+      return res.status(400).json({ success: false, message: "معرف الشركة مطلوب" });
     }
 
-    const existingCar = await Car.findOne({ licensePlate: data.licensePlate });
+    const existingCar = await prisma.car.findUnique({
+      where: { licensePlate: String(licensePlate) }
+    });
+
     if (existingCar) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "رقم اللوحة مسجل مسبقاً لسيارة أخرى" 
-      });
+      return res.status(400).json({ success: false, message: "رقم اللوحة مسجل مسبقاً" });
     }
 
-    if (data.insurancePrice) {
-      data.insurancePrice = Number(data.insurancePrice);
-    } else {
-      data.insurancePrice = 0;
-    }
+    const car = await prisma.$transaction([
+      prisma.car.create({
+        data: {
+          model: String(model),
+          year: Number(year),
+          licensePlate: String(licensePlate),
+          pricePerDay: Number(pricePerDay),
+          insurancePrice: Number(insurancePrice || 0),
+          transmission: String(transmission),
+          fuelType: String(fuelType),
+          seats: Number(seats),
+          mileage: Number(mileage),
+          description: String(description || ""),
+          color: String(color),
+          images: Array.isArray(images) ? images : [],
+          brand: { connect: { id: Number(brandId) } },
+          category: { connect: { id: Number(categoryId) } },
+          company: { connect: { id: Number(targetCompanyId) } }
+        }
+      }),
+      prisma.company.update({
+        where: { id: Number(targetCompanyId) },
+        data: { totalCars: { increment: 1 } }
+      })
+    ]);
 
-    const car = await Car.create(data);
-
-    await Company.findByIdAndUpdate(data.companyId, { 
-      $inc: { totalCars: 1 } 
-    });
-
-    res.status(201).json({ 
-      success: true, 
-      message: "تم إنشاء السيارة بنجاح مع سعر التأمين المحدد", 
-      car 
-    });
+    res.status(201).json({ success: true, car: car[0] });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: "فشل في إنشاء السيارة: " + error.message 
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const updateCar = async (req, res) => {
   try {
     const { id } = req.params;
-    let updateData = req.body;
+    const updateData = req.body;
 
-    if (updateData.latitude && updateData.longitude) {
-      updateData.location = {
-        type: "Point",
-        coordinates: [Number(updateData.longitude), Number(updateData.latitude)]
-      };
-    }
-
-    if (updateData.insurancePrice) updateData.insurancePrice = Number(updateData.insurancePrice);
-    if (updateData.pricePerDay) updateData.pricePerDay = Number(updateData.pricePerDay);
-
-    const car = await Car.findByIdAndUpdate(
-      id,
-      { $set: updateData },
-      { new: true, runValidators: true }
-    );
-
-    if (!car) {
-      return res.status(404).json({
-        success: false,
-        message: "لم يتم العثور على السيارة المطلوبة"
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "تم تحديث بيانات السيارة بنجاح بما في ذلك الموقع",
-      car
+    const car = await prisma.car.update({
+      where: { id: Number(id) },
+      data: {
+        ...updateData,
+        pricePerDay: updateData.pricePerDay ? Number(updateData.pricePerDay) : undefined,
+        insurancePrice: updateData.insurancePrice ? Number(updateData.insurancePrice) : undefined,
+        latitude: updateData.latitude ? Number(updateData.latitude) : undefined,
+        longitude: updateData.longitude ? Number(updateData.longitude) : undefined
+      }
     });
+
+    res.status(200).json({ success: true, car });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "فشل تحديث السيارة: " + error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const deleteCar = async (req, res) => {
   try {
-    const car = await Car.findById(req.params.id);
+    const id = Number(req.params.id);
+    const car = await prisma.car.findUnique({ where: { id } });
+    
     if (!car) return res.status(404).json({ success: false, message: "Car not found" });
-    if (req.user.role.toLowerCase() === "company" && car.companyId.toString() !== req.user.companyId.toString()) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-    await Promise.all([
-      Car.findByIdAndDelete(req.params.id),
-      Company.findByIdAndUpdate(car.companyId, { $inc: { totalCars: -1 } })
+
+    await prisma.$transaction([
+      prisma.car.delete({ where: { id } }),
+      prisma.company.update({
+        where: { id: car.companyId },
+        data: { totalCars: { decrement: 1 } }
+      })
     ]);
+
     res.status(200).json({ success: true, message: "Car deleted successfully" });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to delete car" });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const searchCars = async (req, res) => {
   try {
-    const { 
-      query, 
-      brand, 
-      category, 
-      minPrice, 
-      maxPrice, 
-      fuelType, 
-      transmission, 
-      city 
-    } = req.query;
+    const { query, brand, category, minPrice, maxPrice, fuelType, transmission, city } = req.query;
 
-    let filter = { 
-      isSuspended: false, 
-      isAvailable: true 
-    };
+    const where = { isSuspended: false, isAvailable: true };
 
-    if (query) {
-      filter.model = new RegExp(query, "i");
-    }
-
-    if (brand) {
-      filter.brand = brand;
-    }
-
-    if (category) {
-      filter.category = category;
-    }
-
-    if (fuelType) {
-      filter.fuelType = fuelType;
-    }
-
-    if (transmission) {
-      filter.transmission = transmission.toLowerCase();
-    }
+    if (query) where.model = { contains: query, mode: "insensitive" };
+    if (brand) where.brandId = Number(brand);
+    if (category) where.categoryId = Number(category);
+    if (fuelType) where.fuelType = fuelType;
+    if (transmission) where.transmission = transmission.toLowerCase();
 
     if (minPrice || maxPrice) {
-      filter.pricePerDay = {};
-      if (minPrice) filter.pricePerDay.$gte = parseInt(minPrice);
-      if (maxPrice) filter.pricePerDay.$lte = parseInt(maxPrice);
+      where.pricePerDay = {};
+      if (minPrice) where.pricePerDay.gte = Number(minPrice);
+      if (maxPrice) where.pricePerDay.lte = Number(maxPrice);
     }
 
     if (city) {
-      const companiesInCity = await Company.find({ 
-        city: new RegExp(city, "i") 
-      }).select("_id");
-      
-      const companyIds = companiesInCity.map(c => c._id);
-      filter.companyId = { $in: companyIds };
+      where.company = { city: { contains: city, mode: "insensitive" } };
     }
 
-    const cars = await Car.find(filter)
-      .populate("companyId", "name address city rating")
-      .populate("category", "name icon")
-      .populate("brand", "name logo")
-      .lean();
+    const cars = await prisma.car.findMany({
+      where,
+      include: {
+        company: { select: { name: true, address: true, city: true, rating: true } },
+        category: { select: { name: true, icon: true } },
+        brand: { select: { name: true, logo: true } }
+      }
+    });
 
     const carsWithDiscount = await applyDiscountToCars(cars);
-    
-    let filteredCars = carsWithDiscount;
-    if (minPrice || maxPrice) {
-      filteredCars = carsWithDiscount.filter(car => {
-        const priceToFilter = car.currentPrice;
-        if (minPrice && priceToFilter < Number(minPrice)) return false;
-        if (maxPrice && priceToFilter > Number(maxPrice)) return false;
-        return true;
-      });
-    }
-
-    res.status(200).json({ 
-      success: true, 
-      count: filteredCars.length, 
-      cars: filteredCars 
-    });
+    res.status(200).json({ success: true, count: carsWithDiscount.length, cars: carsWithDiscount });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: "Failed to search cars" 
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const getCarDetails = async (req, res) => {
   try {
-    const car = await Car.findById(req.params.id)
-      .populate("companyId", "name phone address rating logo")
-      .populate("category", "name icon")
-      .populate("brand", "name logo")
-      .lean();
+    const id = Number(req.params.id);
+    const car = await prisma.car.findUnique({
+      where: { id },
+      include: {
+        company: { select: { name: true, phone: true, address: true, rating: true, logo: true } },
+        category: { select: { name: true, icon: true } },
+        brand: { select: { name: true, logo: true } }
+      }
+    });
     
     if (!car) return res.status(404).json({ success: false, message: "Car not found" });
     
-    const reviews = await Booking.find({ carId: req.params.id, status: "completed", rating: { $exists: true } })
-      .populate("userId", "name avatar").select("rating review createdAt").sort({ createdAt: -1 }).lean();
+    const reviews = await prisma.booking.findMany({
+      where: { carId: id, status: "completed", rating: { not: null } },
+      include: { user: { select: { name: true, avatar: true } } },
+      select: { rating: true, review: true, createdAt: true, user: true },
+      orderBy: { createdAt: "desc" }
+    });
     
     const carWithDiscount = await applyDiscountToCar(car);
-    
     res.status(200).json({ success: true, car: carWithDiscount, reviews });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to fetch car details" });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -415,174 +384,149 @@ export const getCarAvailability = async (req, res) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
     
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      return res.status(400).json({ success: false, message: "Invalid date format" });
-    }
-
-    const car = await Car.findById(req.params.id).lean();
+    const car = await prisma.car.findUnique({ where: { id: Number(req.params.id) } });
     if (!car) return res.status(404).json({ success: false, message: "Car not found" });
 
-    const conflicts = await Booking.find({
-      carId: req.params.id,
-      status: { $in: ["pending", "confirmed"] },
-      $or: [{ startDate: { $lte: end }, endDate: { $gte: start } }]
-    }).lean();
+    const conflicts = await prisma.booking.findMany({
+      where: {
+        carId: Number(req.params.id),
+        status: { in: ["pending", "confirmed"] },
+        OR: [
+          { startDate: { lte: end }, endDate: { gte: start } }
+        ]
+      }
+    });
     
     res.status(200).json({ success: true, isAvailable: conflicts.length === 0 && car.isAvailable && !car.isSuspended });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to check availability" });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const getHomeCars = async (req, res) => {
   try {
-    const baseFilter = { isAvailable: true, isSuspended: false };
+    const where = { isAvailable: true, isSuspended: false };
+    const include = {
+      company: { select: { name: true, rating: true } },
+      category: { select: { name: true, icon: true } },
+      brand: { select: { name: true, logo: true } }
+    };
+
     const [topRated, cheapest, newest] = await Promise.all([
-      Car.find(baseFilter).sort({ rating: -1 }).limit(8).populate("companyId", "name rating").populate("category", "name icon").populate("brand", "name logo").lean(),
-      Car.find(baseFilter).sort({ pricePerDay: 1 }).limit(8).populate("companyId", "name rating").populate("category", "name icon").populate("brand", "name logo").lean(),
-      Car.find(baseFilter).sort({ createdAt: -1 }).limit(8).populate("companyId", "name rating").populate("category", "name icon").populate("brand", "name logo").lean()
+      prisma.car.findMany({ where, orderBy: { rating: "desc" }, take: 8, include }),
+      prisma.car.findMany({ where, orderBy: { pricePerDay: "asc" }, take: 8, include }),
+      prisma.car.findMany({ where, orderBy: { createdAt: "desc" }, take: 8, include })
     ]);
     
-    const topRatedWithDiscount = await applyDiscountToCars(topRated);
-    const cheapestWithDiscount = await applyDiscountToCars(cheapest);
-    const newestWithDiscount = await applyDiscountToCars(newest);
+    const [topRatedWD, cheapestWD, newestWD] = await Promise.all([
+      applyDiscountToCars(topRated),
+      applyDiscountToCars(cheapest),
+      applyDiscountToCars(newest)
+    ]);
     
     res.status(200).json({ 
       success: true, 
-      data: { 
-        topRated: topRatedWithDiscount, 
-        cheapest: cheapestWithDiscount, 
-        newest: newestWithDiscount 
-      } 
+      data: { topRated: topRatedWD, cheapest: cheapestWD, newest: newestWD } 
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to fetch home cars" });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const toggleCarAvailability = async (req, res) => {
   try {
-    const car = await Car.findById(req.params.id);
-    if (!car) return res.status(404).json({ success: false, message: "Car not found" });
-    if (req.user.role.toLowerCase() === "company" && car.companyId.toString() !== req.user.companyId.toString()) {
-      return res.status(403).json({ success: false, message: "Unauthorized" });
-    }
-    car.isAvailable = !car.isAvailable;
-    await car.save();
-    res.status(200).json({ success: true, isAvailable: car.isAvailable });
+    const id = Number(req.params.id);
+    const car = await prisma.car.findUnique({ where: { id } });
+    const updatedCar = await prisma.car.update({
+      where: { id },
+      data: { isAvailable: !car.isAvailable }
+    });
+    res.status(200).json({ success: true, isAvailable: updatedCar.isAvailable });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to toggle availability" });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const getCompanyAnalytics = async (req, res) => {
   try {
-    const companyId = req.user.companyId;
+    const companyId = Number(req.user.companyId);
     const [stats, carStats] = await Promise.all([
-      Booking.aggregate([
-        { $match: { companyId: new mongoose.Types.ObjectId(companyId) } },
-        { $group: { _id: null, totalRevenue: { $sum: "$totalPrice" }, totalBookings: { $sum: 1 }, completedBookings: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } }, cancelledBookings: { $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] } } } }
-      ]),
-      Car.aggregate([
-        { $match: { companyId: new mongoose.Types.ObjectId(companyId) } },
-        { $group: { _id: "$category", count: { $sum: 1 }, avgPrice: { $avg: "$pricePerDay" } } }
-      ])
+      prisma.booking.aggregate({
+        where: { companyId },
+        _sum: { totalPrice: true },
+        _count: { id: true }
+      }),
+      prisma.car.groupBy({
+        by: ['categoryId'],
+        where: { companyId },
+        _count: { id: true },
+        _avg: { pricePerDay: true }
+      })
     ]);
-    res.status(200).json({ success: true, analytics: stats[0] || {}, inventoryDistribution: carStats });
+    res.status(200).json({ success: true, analytics: stats, inventoryDistribution: carStats });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to fetch analytics" });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const getCarsByCompany = async (req, res) => {
   try {
-    let companyId;
-    if (req.user.role.toLowerCase() === "company") {
-      companyId = req.user.companyId;
-    } else {
-      companyId = req.params.companyId;
-    }
-
-    if (!companyId) {
-      return res.status(400).json({
-        success: false,
-        message: "Company ID is required"
-      });
-    }
-
+    const companyId = req.user.role.toLowerCase() === "company" ? req.user.companyId : Number(req.params.companyId);
     const { page = 1, limit = 10 } = req.query;
-    const pageNumber = parseInt(page);
-    const limitNumber = parseInt(limit);
-    const skip = (pageNumber - 1) * limitNumber;
+    const skip = (Number(page) - 1) * Number(limit);
 
     const [cars, total] = await Promise.all([
-      Car.find({ companyId })
-        .skip(skip)
-        .limit(limitNumber)
-        .populate("category", "name icon")
-        .populate("brand", "name logo")
-        .sort({ createdAt: -1 })
-        .lean(),
-      Car.countDocuments({ companyId })
+      prisma.car.findMany({
+        where: { companyId: Number(companyId) },
+        skip,
+        take: Number(limit),
+        include: { category: { select: { name: true, icon: true } }, brand: { select: { name: true, logo: true } } },
+        orderBy: { createdAt: "desc" }
+      }),
+      prisma.car.count({ where: { companyId: Number(companyId) } })
     ]);
 
     const carsWithDiscount = await applyDiscountToCars(cars);
-
-    res.status(200).json({
-      success: true,
-      count: carsWithDiscount.length,
-      cars: carsWithDiscount,
-      pagination: {
-        total,
-        page: pageNumber,
-        limit: limitNumber,
-        pages: Math.ceil(total / limitNumber)
-      }
-    });
+    res.status(200).json({ success: true, count: carsWithDiscount.length, cars: carsWithDiscount, pagination: { total, page: Number(page), limit: Number(limit) } });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch company cars"
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const getCarsByBrand = async (req, res) => {
   try {
-    const { brandId } = req.params;
+    const brandId = Number(req.params.brandId);
     const { page = 1, limit = 10 } = req.query;
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (Number(page) - 1) * Number(limit);
 
     const [cars, total] = await Promise.all([
-      Car.find({ 
-        brand: brandId, 
-        isAvailable: true, 
-        isSuspended: false 
-      })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .populate("companyId", "name rating")
-        .populate("category", "name icon")
-        .populate("brand", "name logo")
-        .lean(),
-      Car.countDocuments({ brand: brandId, isAvailable: true, isSuspended: false })
+      prisma.car.findMany({
+        where: { brandId, isAvailable: true, isSuspended: false },
+        skip,
+        take: Number(limit),
+        include: { company: { select: { name: true, rating: true } }, category: { select: { name: true, icon: true } }, brand: { select: { name: true, logo: true } } }
+      }),
+      prisma.car.count({ where: { brandId, isAvailable: true, isSuspended: false } })
     ]);
 
     const carsWithDiscount = await applyDiscountToCars(cars);
-
-    res.status(200).json({
-      success: true,
-      count: carsWithDiscount.length,
-      cars: carsWithDiscount,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / limit)
-      }
-    });
+    res.status(200).json({ success: true, cars: carsWithDiscount, pagination: { total, page: Number(page), limit: Number(limit) } });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to fetch cars by brand" });
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getRecommendedCarsAction = async (req, res) => {
+  try {
+    const cars = await prisma.car.findMany({
+      where: { isAvailable: true, isSuspended: false },
+      orderBy: [{ totalBookings: "desc" }, { rating: "desc" }],
+      take: 8,
+      include: { company: { select: { name: true, rating: true } }, category: { select: { name: true, icon: true } }, brand: { select: { name: true, logo: true } } }
+    });
+    const carsWithDiscount = await applyDiscountToCars(cars);
+    res.status(200).json({ success: true, cars: carsWithDiscount });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };

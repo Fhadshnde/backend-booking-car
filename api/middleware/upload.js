@@ -1,10 +1,23 @@
 import multer from "multer";
 import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 
-// إعداد التخزين
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// تحديد مسار مجلد الـ uploads في الجذر (Root)
+const uploadDir = path.resolve(__dirname, "../uploads");
+
+// التأكد من وجود المجلد
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// إعداد التخزين باستخدام المسار المطلق
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/");
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
@@ -12,7 +25,7 @@ const storage = multer.diskStorage({
   }
 });
 
-// فلتر أنواع الملفات
+// فلتر أنواع الملفات (كما هو)
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|webp|gif/;
   const extName = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -25,20 +38,16 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// إعداد multer
 const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 5MB حد أقصى
-    files: 10 // 10 صور كحد أقصى
+    fileSize: 50 * 1024 * 1024, // 50MB (ملاحظة: في تعليقك كتبت 5MB بينما الكود 50MB)
+    files: 10
   }
 });
 
-// middleware لرفع صور السيارات
 export const uploadCarImages = upload.array("images", 10);
-
-// middleware لرفع صورة واحدة (logo, profile)
 export const uploadSingleImage = upload.single("image");
 
 export default upload;

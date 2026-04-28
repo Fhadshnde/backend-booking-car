@@ -1,10 +1,4 @@
-import mongoose from "mongoose";
-import bcrypt from "bcryptjs";
-import Company from "../models/company.model.js";
-import User from "../models/user.model.js";
-import Commission from "../models/Commission.js";
-import Car from "../models/car.model.js";
-import Booking from "../models/booking.model.js";
+import { prisma } from "../lib/prisma.js";
 
 export const createCompany = async (req, res) => {
   try {
@@ -20,14 +14,11 @@ export const createCompany = async (req, res) => {
       fixedAmount
     } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(ownerId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid ownerId"
-      });
-    }
+    const ownerIdInt = parseInt(ownerId);
 
-    const ownerUser = await User.findById(ownerId);
+    const ownerUser = await prisma.user.findUnique({
+      where: { id: ownerIdInt }
+    });
 
     if (!ownerUser) {
       return res.status(404).json({
@@ -43,30 +34,39 @@ export const createCompany = async (req, res) => {
       });
     }
 
-    const company = await Company.create({
-      name,
-      phone,
-      address,
-      city,
-      description,
-      owner: ownerUser._id,
-      licenseNumber
-    });
+    const result = await prisma.$transaction(async (tx) => {
+      const company = await tx.company.create({
+        data: {
+          name,
+          phone,
+          address,
+          city,
+          licenseNumber,
+          description
+        }
+      });
 
-    ownerUser.companyId = company._id;
-    await ownerUser.save();
+      await tx.user.update({
+        where: { id: ownerIdInt },
+        data: { companyId: company.id }
+      });
 
-    await Commission.create({
-      company: company._id,
-      percentage: percentage || 10,
-      fixedAmount: fixedAmount || 0,
-      updatedBy: req.user?.id
+      await tx.commission.create({
+        data: {
+          companyId: company.id,
+          percentage: percentage || 10,
+          fixedAmount: fixedAmount || 0,
+          updatedBy: req.user?.id ? parseInt(req.user.id) : null
+        }
+      });
+
+      return company;
     });
 
     res.status(201).json({
       success: true,
       message: "Company and commission created successfully",
-      company
+      company: result
     });
   } catch (error) {
     res.status(500).json({
@@ -83,24 +83,40 @@ export const getCompanies = async (req, res) => {
     const limitNumber = parseInt(limit);
     const skip = (pageNumber - 1) * limitNumber;
 
-    let filter = {};
+    let where = {};
     if (isApproved !== undefined) {
-      filter.isApproved = isApproved === "true";
+      where.isApproved = isApproved === "true";
     }
 
-    const [companies, total] = await Promise.all([
-      Company.find(filter)
-        .skip(skip)
-        .limit(limitNumber)
-        .populate("owner", "name phone")
-        .lean(),
-      Company.countDocuments(filter)
+    const [companies, total] = await prisma.$transaction([
+      prisma.company.findMany({
+        where,
+        skip,
+        take: limitNumber,
+        include: {
+          users: {
+            select: {
+              name: true,
+              phone: true
+            },
+            where: {
+              role: "owner"
+            }
+          }
+        }
+      }),
+      prisma.company.count({ where })
     ]);
 
     res.status(200).json({
       success: true,
       companies,
-      pagination: { total, page: pageNumber, limit: limitNumber, pages: Math.ceil(total / limitNumber) }
+      pagination: {
+        total,
+        page: pageNumber,
+        limit: limitNumber,
+        pages: Math.ceil(total / limitNumber)
+      }
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch companies" });
@@ -109,7 +125,15 @@ export const getCompanies = async (req, res) => {
 
 export const getCompany = async (req, res) => {
   try {
-    const company = await Company.findById(req.params.id).populate("owner", "name phone").lean();
+    const company = await prisma.company.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: {
+        users: {
+          select: { name: true, phone: true }
+        }
+      }
+    });
+
     if (!company) {
       return res.status(404).json({ success: false, message: "Company not found" });
     }
@@ -122,14 +146,11 @@ export const getCompany = async (req, res) => {
 export const updateCompany = async (req, res) => {
   try {
     const { name, phone, description, address, city, country } = req.body;
-    const company = await Company.findByIdAndUpdate(
-      req.params.id,
-      { name, phone, description, address, city, country },
-      { new: true, runValidators: true }
-    );
-    if (!company) {
-      return res.status(404).json({ success: false, message: "Company not found" });
-    }
+    const company = await prisma.company.update({
+      where: { id: parseInt(req.params.id) },
+      data: { name, phone, description, address, city, country }
+    });
+
     res.status(200).json({
       success: true,
       message: "Company updated successfully",
@@ -142,16 +163,24 @@ export const updateCompany = async (req, res) => {
 
 export const deleteCompany = async (req, res) => {
   try {
-    const company = await Company.findById(req.params.id);
+    const companyId = parseInt(req.params.id);
+
+    const company = await prisma.company.findUnique({
+      where: { id: companyId }
+    });
+
     if (!company) {
       return res.status(404).json({ success: false, message: "Company not found" });
     }
 
-    await Promise.all([
-      User.findByIdAndUpdate(company.owner, { $unset: { companyId: 1 } }),
-      Car.deleteMany({ companyId: req.params.id }),
-      Commission.deleteMany({ company: req.params.id }),
-      Company.findByIdAndDelete(req.params.id)
+    await prisma.$transaction([
+      prisma.user.updateMany({
+        where: { companyId: companyId },
+        data: { companyId: null }
+      }),
+      prisma.car.deleteMany({ where: { companyId: companyId } }),
+      prisma.commission.deleteMany({ where: { companyId: companyId } }),
+      prisma.company.delete({ where: { id: companyId } })
     ]);
 
     res.status(200).json({ success: true, message: "Company and related data deleted successfully" });
@@ -162,7 +191,19 @@ export const deleteCompany = async (req, res) => {
 
 export const getCompanyProfile = async (req, res) => {
   try {
-    const company = await Company.findOne({ owner: req.user.id }).populate("owner", "name phone").lean();
+    const company = await prisma.company.findFirst({
+      where: {
+        users: {
+          some: { id: parseInt(req.user.id) }
+        }
+      },
+      include: {
+        users: {
+          select: { name: true, phone: true }
+        }
+      }
+    });
+
     if (!company) {
       return res.status(404).json({ success: false, message: "Company not found" });
     }
@@ -175,14 +216,22 @@ export const getCompanyProfile = async (req, res) => {
 export const updateCompanyProfile = async (req, res) => {
   try {
     const { name, phone, description, address, city, country, logo } = req.body;
-    const company = await Company.findOneAndUpdate(
-      { owner: req.user.id },
-      { name, phone, description, address, city, country, logo },
-      { new: true, runValidators: true }
-    );
-    if (!company) {
+
+    const existingCompany = await prisma.company.findFirst({
+      where: {
+        users: { some: { id: parseInt(req.user.id) } }
+      }
+    });
+
+    if (!existingCompany) {
       return res.status(404).json({ success: false, message: "Company not found" });
     }
+
+    const company = await prisma.company.update({
+      where: { id: existingCompany.id },
+      data: { name, phone, description, address, city, country, logo }
+    });
+
     res.status(200).json({
       success: true,
       message: "Company profile updated successfully",
@@ -195,26 +244,47 @@ export const updateCompanyProfile = async (req, res) => {
 
 export const getCompanyDashboard = async (req, res) => {
   try {
-    const company = await Company.findOne({ owner: req.user.id }).lean();
+    const userId = parseInt(req.user.id);
+    const company = await prisma.company.findFirst({
+      where: {
+        users: { some: { id: userId } }
+      }
+    });
+
     if (!company) {
       return res.status(404).json({ success: false, message: "Company not found" });
     }
 
-    const [totalCars, totalBookings, completedBookings, pendingBookings, revenueData, recentBookings] = await Promise.all([
-      Car.countDocuments({ companyId: company._id }),
-      Booking.countDocuments({ companyId: company._id }),
-      Booking.countDocuments({ companyId: company._id, status: "completed" }),
-      Booking.countDocuments({ companyId: company._id, status: "pending" }),
-      Booking.aggregate([
-        { $match: { companyId: company._id, paymentStatus: "completed" } },
-        { $group: { _id: null, total: { $sum: "$totalPrice" } } }
-      ]),
-      Booking.find({ companyId: company._id })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .populate("userId", "name")
-        .populate("carId", "brand model")
-        .lean()
+    const [
+      totalCars,
+      totalBookings,
+      completedBookings,
+      pendingBookings,
+      revenueData,
+      recentBookings
+    ] = await prisma.$transaction([
+      prisma.car.count({ where: { companyId: company.id } }),
+      prisma.booking.count({ where: { companyId: company.id } }),
+      prisma.booking.count({ where: { companyId: company.id, status: "completed" } }),
+      prisma.booking.count({ where: { companyId: company.id, status: "pending" } }),
+      prisma.booking.aggregate({
+        where: {
+          companyId: company.id,
+          paymentStatus: "completed"
+        },
+        _sum: {
+          totalPrice: true
+        }
+      }),
+      prisma.booking.findMany({
+        where: { companyId: company.id },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: {
+          user: { select: { name: true } },
+          car: { select: { brand: { select: { name: true } }, model: true } }
+        }
+      })
     ]);
 
     res.status(200).json({
@@ -224,7 +294,7 @@ export const getCompanyDashboard = async (req, res) => {
         totalBookings,
         completedBookings,
         pendingBookings,
-        totalRevenue: revenueData[0]?.total || 0,
+        totalRevenue: revenueData._sum.totalPrice || 0,
         recentBookings
       }
     });
@@ -235,25 +305,31 @@ export const getCompanyDashboard = async (req, res) => {
 
 export const getCompanyCars = async (req, res) => {
   try {
-    const { companyId } = req.params;
+    const companyId = parseInt(req.params.companyId);
     const { page = 1, limit = 10 } = req.query;
     const pageNumber = parseInt(page);
     const limitNumber = parseInt(limit);
     const skip = (pageNumber - 1) * limitNumber;
 
-    const [cars, total] = await Promise.all([
-      Car.find({ companyId })
-        .skip(skip)
-        .limit(limitNumber)
-        .sort({ createdAt: -1 })
-        .lean(),
-      Car.countDocuments({ companyId })
+    const [cars, total] = await prisma.$transaction([
+      prisma.car.findMany({
+        where: { companyId },
+        skip,
+        take: limitNumber,
+        orderBy: { createdAt: "desc" }
+      }),
+      prisma.car.count({ where: { companyId } })
     ]);
 
     res.status(200).json({
       success: true,
       cars,
-      pagination: { total, page: pageNumber, limit: limitNumber, pages: Math.ceil(total / limitNumber) }
+      pagination: {
+        total,
+        page: pageNumber,
+        limit: limitNumber,
+        pages: Math.ceil(total / limitNumber)
+      }
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch cars" });

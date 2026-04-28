@@ -1,124 +1,199 @@
-import Review from "../models/review.model.js";
-import Booking from "../models/booking.model.js";
-import catchAsync from "../helpers/catchAsync.js";
-import AppError from "../helpers/AppError.js";
+import { prisma } from "../lib/prisma.js";
 
-// إنشاء تقييم جديد
-export const createReview = catchAsync(async (req, res, next) => {
-  const { bookingId, rating, comment } = req.body;
-
-  // التحقق من أن الحجز موجود ومكتمل
-  const booking = await Booking.findById(bookingId);
-  if (!booking) {
-    return next(new AppError("الحجز غير موجود", 404));
-  }
-
-  if (booking.status !== "completed") {
-    return next(new AppError("لا يمكن تقييم حجز غير مكتمل", 400));
-  }
-
-  // التحقق من أن المستخدم هو صاحب الحجز
-  if (booking.userId.toString() !== req.user._id.toString()) {
-    return next(new AppError("لا يمكنك تقييم حجز ليس لك", 403));
-  }
-
-  // التحقق من عدم وجود تقييم سابق
-  const existingReview = await Review.findOne({ booking: bookingId });
-  if (existingReview) {
-    return next(new AppError("تم تقييم هذا الحجز مسبقاً", 400));
-  }
-
-  const review = await Review.create({
-    user: req.user._id,
-    car: booking.carId,
-    company: booking.companyId,
-    booking: bookingId,
-    rating,
-    comment
+const updateCarAndCompanyStats = async (carId, companyId) => {
+  const carReviews = await prisma.review.aggregate({
+    where: { carId },
+    _avg: { rating: true },
+    _count: { rating: true }
   });
 
-  res.status(201).json({
-    success: true,
-    message: "تم إنشاء التقييم بنجاح",
-    review
-  });
-});
-
-// جلب تقييمات سيارة معينة
-export const getCarReviews = catchAsync(async (req, res) => {
-  const { carId } = req.params;
-  const { page = 1, limit = 10 } = req.query;
-  const skip = (page - 1) * limit;
-
-  const reviews = await Review.find({ car: carId })
-    .skip(skip)
-    .limit(parseInt(limit))
-    .populate("user", "name")
-    .sort({ createdAt: -1 });
-
-  const total = await Review.countDocuments({ car: carId });
-
-  res.status(200).json({
-    success: true,
-    reviews,
-    pagination: {
-      total,
-      page: parseInt(page),
-      limit: parseInt(limit),
-      pages: Math.ceil(total / limit)
+  await prisma.car.update({
+    where: { id: carId },
+    data: {
+      rating: carReviews._avg.rating || 0,
+      totalReviews: carReviews._count.rating || 0
     }
   });
-});
 
-// جلب تقييمات شركة معينة
-import { paginate } from "../helpers/pagination.helper.js";
-
-export const getCompanyReviews = catchAsync(async (req, res) => {
-  const { companyId } = req.params;
-  const { page, limit } = req.query;
-
-  const result = await paginate(Review, { company: companyId }, {
-    page,
-    limit,
-    populate: [
-      { path: "user", select: "name" },
-      { path: "car", select: "brand model" }
-    ]
+  const companyReviews = await prisma.review.aggregate({
+    where: { companyId },
+    _avg: { rating: true },
+    _count: { rating: true }
   });
 
-  res.status(200).json({
-    success: true,
-    ...result
+  await prisma.company.update({
+    where: { id: companyId },
+    data: {
+      rating: companyReviews._avg.rating || 0,
+      totalReviews: companyReviews._count.rating || 0
+    }
   });
-});
+};
 
-// جلب تقييمات المستخدم الحالي
-export const getMyReviews = catchAsync(async (req, res) => {
-  const reviews = await Review.find({ user: req.user._id })
-    .populate("car", "brand model images")
-    .populate("company", "name")
-    .sort({ createdAt: -1 });
+export const createReview = async (req, res) => {
+  try {
+    const { bookingId, rating, comment } = req.body;
+    const bId = parseInt(bookingId);
 
-  res.status(200).json({ success: true, reviews });
-});
+    const booking = await prisma.booking.findUnique({
+      where: { id: bId }
+    });
 
-// حذف تقييم
-export const deleteReview = catchAsync(async (req, res, next) => {
-  const review = await Review.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "الحجز غير موجود" });
+    }
 
-  if (!review) {
-    return next(new AppError("التقييم غير موجود", 404));
+    if (booking.status !== "completed") {
+      return res.status(400).json({ success: false, message: "لا يمكن تقييم حجز غير مكتمل" });
+    }
+
+    if (booking.userId !== req.user.id) {
+      return res.status(403).json({ success: false, message: "لا يمكنك تقييم حجز ليس لك" });
+    }
+
+    const existingReview = await prisma.review.findUnique({
+      where: { bookingId: bId }
+    });
+
+    if (existingReview) {
+      return res.status(400).json({ success: false, message: "تم تقييم هذا الحجز مسبقاً" });
+    }
+
+    const review = await prisma.review.create({
+      data: {
+        userId: req.user.id,
+        carId: booking.carId,
+        companyId: booking.companyId,
+        bookingId: bId,
+        rating: parseInt(rating),
+        comment
+      }
+    });
+
+    await updateCarAndCompanyStats(booking.carId, booking.companyId);
+
+    res.status(201).json({
+      success: true,
+      message: "تم إنشاء التقييم بنجاح",
+      review
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
+};
 
-  // فقط صاحب التقييم أو الأدمن يقدر يحذف
-  if (review.user.toString() !== req.user._id.toString() && req.user.role !== "admin") {
-    return next(new AppError("لا يمكنك حذف هذا التقييم", 403));
+export const getCarReviews = async (req, res) => {
+  try {
+    const carId = parseInt(req.params.carId);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const [reviews, total] = await prisma.$transaction([
+      prisma.review.findMany({
+        where: { carId },
+        skip,
+        take: limit,
+        include: { user: { select: { name: true } } },
+        orderBy: { createdAt: "desc" }
+      }),
+      prisma.review.count({ where: { carId } })
+    ]);
+
+    res.status(200).json({
+      success: true,
+      reviews,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
+};
 
-  await Review.findByIdAndDelete(req.params.id);
+export const getCompanyReviews = async (req, res) => {
+  try {
+    const companyId = parseInt(req.params.companyId);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-  res.status(200).json({
-    success: true,
-    message: "تم حذف التقييم بنجاح"
-  });
-});
+    const [reviews, total] = await prisma.$transaction([
+      prisma.review.findMany({
+        where: { companyId },
+        skip,
+        take: limit,
+        include: {
+          user: { select: { name: true } },
+          car: { include: { brand: { select: { name: true } } } }
+        },
+        orderBy: { createdAt: "desc" }
+      }),
+      prisma.review.count({ where: { companyId } })
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: reviews,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getMyReviews = async (req, res) => {
+  try {
+    const reviews = await prisma.review.findMany({
+      where: { userId: req.user.id },
+      include: {
+        car: { select: { model: true, images: true } },
+        company: { select: { name: true } }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    res.status(200).json({ success: true, reviews });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteReview = async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const review = await prisma.review.findUnique({
+      where: { id }
+    });
+
+    if (!review) {
+      return res.status(404).json({ success: false, message: "التقييم غير موجود" });
+    }
+
+    if (review.userId !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({ success: false, message: "لا يمكنك حذف هذا التقييم" });
+    }
+
+    await prisma.review.delete({
+      where: { id }
+    });
+
+    await updateCarAndCompanyStats(review.carId, review.companyId);
+
+    res.status(200).json({
+      success: true,
+      message: "تم حذف التقييم بنجاح"
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

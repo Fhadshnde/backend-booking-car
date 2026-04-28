@@ -1,157 +1,272 @@
-import Settings from "../models/settings.model.js";
-import catchAsync from "../helpers/catchAsync.js";
-import AppError from "../helpers/AppError.js";
+import { prisma } from "../lib/prisma.js";
 
-export const getSettings = catchAsync(async (req, res, next) => {
-  let settings = await Settings.findOne().sort({ createdAt: -1 });
-  
-  if (!settings) {
-    settings = await Settings.create({
-      depositPercentage: 0.3,
-      insurancePrice: 50000,
-      cashbackPercentage: 0.05,
-      minCashbackToUse: 10000,
-      updatedBy: req.user.id,
+export const getSettings = async (req, res) => {
+  try {
+    let settings = await prisma.setting.findFirst({
+      orderBy: { createdAt: "desc" }
     });
+
+    if (!settings) {
+      settings = await prisma.setting.create({
+        data: {
+          depositPercentage: 0.3,
+          insurancePrice: 50000,
+          cashbackPercentage: 0.05,
+          minCashbackToUse: 10000,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        depositPercentage: settings.depositPercentage,
+        insurancePrice: settings.insurancePrice,
+        cashbackPercentage: settings.cashbackPercentage,
+        minCashbackToUse: settings.minCashbackToUse
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  
-  res.status(200).json({
-    success: true,
-    data: {
-      depositPercentage: settings.depositPercentage,
-      insurancePrice: settings.insurancePrice,
+};
+
+export const updateSettings = async (req, res) => {
+  try {
+    const { depositPercentage, insurancePrice, cashbackPercentage, minCashbackToUse } = req.body;
+    let settings = await prisma.setting.findFirst({
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (!settings) {
+      settings = await prisma.setting.create({
+        data: {
+          depositPercentage: depositPercentage || 0.3,
+          insurancePrice: insurancePrice || 50000,
+          cashbackPercentage: cashbackPercentage || 0.05,
+          minCashbackToUse: minCashbackToUse || 10000,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    } else {
+      settings = await prisma.setting.update({
+        where: { id: settings.id },
+        data: {
+          depositPercentage: depositPercentage !== undefined ? depositPercentage : settings.depositPercentage,
+          insurancePrice: insurancePrice !== undefined ? insurancePrice : settings.insurancePrice,
+          cashbackPercentage: cashbackPercentage !== undefined ? cashbackPercentage : settings.cashbackPercentage,
+          minCashbackToUse: minCashbackToUse !== undefined ? minCashbackToUse : settings.minCashbackToUse,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        depositPercentage: settings.depositPercentage,
+        insurancePrice: settings.insurancePrice,
+        cashbackPercentage: settings.cashbackPercentage,
+        minCashbackToUse: settings.minCashbackToUse
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getDepositPercentage = async (req, res) => {
+  try {
+    let settings = await prisma.setting.findFirst({
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (!settings) {
+      settings = await prisma.setting.create({
+        data: {
+          depositPercentage: 0.3,
+          insurancePrice: 50000,
+          cashbackPercentage: 0.05,
+          minCashbackToUse: 10000,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      depositPercentage: settings.depositPercentage
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getCashbackSettings = async (req, res) => {
+  try {
+    let settings = await prisma.setting.findFirst({
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (!settings) {
+      settings = await prisma.setting.create({
+        data: {
+          depositPercentage: 0.3,
+          insurancePrice: 50000,
+          cashbackPercentage: 0.05,
+          minCashbackToUse: 10000,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
       cashbackPercentage: settings.cashbackPercentage,
-      minCashbackToUse: settings.minCashbackToUse,
-    },
-  });
-});
-
-export const updateSettings = catchAsync(async (req, res, next) => {
-  const { depositPercentage, insurancePrice, cashbackPercentage, minCashbackToUse } = req.body;
-  
-  let settings = await Settings.findOne().sort({ createdAt: -1 });
-  
-  if (!settings) {
-    settings = new Settings({
-      updatedBy: req.user.id,
+      minCashbackToUse: settings.minCashbackToUse
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  
-  if (depositPercentage !== undefined) {
-    settings.depositPercentage = depositPercentage;
+};
+
+export const setGlobalDepositPercentage = async (req, res) => {
+  try {
+    const { depositPercentage } = req.body;
+
+    if (depositPercentage === undefined) {
+      return res.status(400).json({ success: false, message: "نسبة العربون مطلوبة" });
+    }
+
+    let settings = await prisma.setting.findFirst({
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (!settings) {
+      settings = await prisma.setting.create({
+        data: {
+          depositPercentage,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    } else {
+      settings = await prisma.setting.update({
+        where: { id: settings.id },
+        data: {
+          depositPercentage,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      depositPercentage: settings.depositPercentage
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  if (insurancePrice !== undefined) {
-    settings.insurancePrice = insurancePrice;
-  }
-  if (cashbackPercentage !== undefined) {
-    settings.cashbackPercentage = cashbackPercentage;
-  }
-  if (minCashbackToUse !== undefined) {
-    settings.minCashbackToUse = minCashbackToUse;
-  }
-  
-  settings.updatedBy = req.user.id;
-  await settings.save();
-  
-  res.status(200).json({
-    success: true,
-    data: {
-      depositPercentage: settings.depositPercentage,
-      insurancePrice: settings.insurancePrice,
+};
+
+export const setCashbackSettings = async (req, res) => {
+  try {
+    const { cashbackPercentage, minCashbackToUse } = req.body;
+
+    let settings = await prisma.setting.findFirst({
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (!settings) {
+      settings = await prisma.setting.create({
+        data: {
+          cashbackPercentage: cashbackPercentage !== undefined ? cashbackPercentage : 0.05,
+          minCashbackToUse: minCashbackToUse !== undefined ? minCashbackToUse : 10000,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    } else {
+      settings = await prisma.setting.update({
+        where: { id: settings.id },
+        data: {
+          cashbackPercentage: cashbackPercentage !== undefined ? cashbackPercentage : settings.cashbackPercentage,
+          minCashbackToUse: minCashbackToUse !== undefined ? minCashbackToUse : settings.minCashbackToUse,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
       cashbackPercentage: settings.cashbackPercentage,
-      minCashbackToUse: settings.minCashbackToUse,
-    },
-  });
-});
-
-export const getDepositPercentage = catchAsync(async (req, res, next) => {
-  let settings = await Settings.findOne().sort({ createdAt: -1 });
-  
-  if (!settings) {
-    settings = await Settings.create({
-      depositPercentage: 0.3,
-      insurancePrice: 50000,
-      cashbackPercentage: 0.05,
-      minCashbackToUse: 10000,
-      updatedBy: req.user.id,
+      minCashbackToUse: settings.minCashbackToUse
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  
-  res.status(200).json({
-    success: true,
-    depositPercentage: settings.depositPercentage,
-  });
-});
+};
 
-export const getCashbackSettings = catchAsync(async (req, res, next) => {
-  let settings = await Settings.findOne().sort({ createdAt: -1 });
-  
-  if (!settings) {
-    settings = await Settings.create({
-      depositPercentage: 0.3,
-      insurancePrice: 50000,
-      cashbackPercentage: 0.05,
-      minCashbackToUse: 10000,
-      updatedBy: req.user.id,
+export const getInsurancePrice = async (req, res) => {
+  try {
+    let settings = await prisma.setting.findFirst({
+      orderBy: { createdAt: "desc" }
     });
-  }
-  
-  res.status(200).json({
-    success: true,
-    cashbackPercentage: settings.cashbackPercentage,
-    minCashbackToUse: settings.minCashbackToUse,
-  });
-});
 
-export const setGlobalDepositPercentage = catchAsync(async (req, res, next) => {
-  const { depositPercentage } = req.body;
-  
-  if (depositPercentage === undefined) {
-    return next(new AppError("نسبة العربون مطلوبة", 400));
-  }
-  
-  let settings = await Settings.findOne().sort({ createdAt: -1 });
-  
-  if (!settings) {
-    settings = new Settings({
-      updatedBy: req.user.id,
-    });
-  }
-  
-  settings.depositPercentage = depositPercentage;
-  settings.updatedBy = req.user.id;
-  await settings.save();
-  
-  res.status(200).json({
-    success: true,
-    depositPercentage: settings.depositPercentage,
-  });
-});
+    if (!settings) {
+      settings = await prisma.setting.create({
+        data: {
+          depositPercentage: 0.3,
+          insurancePrice: 50000,
+          cashbackPercentage: 0.05,
+          minCashbackToUse: 10000,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    }
 
-export const setCashbackSettings = catchAsync(async (req, res, next) => {
-  const { cashbackPercentage, minCashbackToUse } = req.body;
-  
-  let settings = await Settings.findOne().sort({ createdAt: -1 });
-  
-  if (!settings) {
-    settings = new Settings({
-      updatedBy: req.user.id,
+    res.status(200).json({
+      success: true,
+      insurancePrice: settings.insurancePrice
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  
-  if (cashbackPercentage !== undefined) {
-    settings.cashbackPercentage = cashbackPercentage;
+};
+
+export const setInsurancePrice = async (req, res) => {
+  try {
+    const { insurancePrice } = req.body;
+
+    if (insurancePrice === undefined) {
+      return res.status(400).json({ success: false, message: "سعر التأمين مطلوب" });
+    }
+
+    let settings = await prisma.setting.findFirst({
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (!settings) {
+      settings = await prisma.setting.create({
+        data: {
+          insurancePrice,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    } else {
+      settings = await prisma.setting.update({
+        where: { id: settings.id },
+        data: {
+          insurancePrice,
+          updatedBy: parseInt(req.user.id)
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      insurancePrice: settings.insurancePrice
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  if (minCashbackToUse !== undefined) {
-    settings.minCashbackToUse = minCashbackToUse;
-  }
-  
-  settings.updatedBy = req.user.id;
-  await settings.save();
-  
-  res.status(200).json({
-    success: true,
-    cashbackPercentage: settings.cashbackPercentage,
-    minCashbackToUse: settings.minCashbackToUse,
-  });
-});
+};

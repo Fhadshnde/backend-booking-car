@@ -1,9 +1,9 @@
-import Category from "../models/category.model.js";
-import Car from "../models/car.model.js";
+import { prisma } from "../lib/prisma.js";
+import { applyDiscountToCars } from "./car.controller.js";
 
 export const getCategories = async (req, res) => {
   try {
-    const categories = await Category.find({ isActive: true }).lean();
+    const categories = await prisma.category.findMany({ where: { isActive: true } });
     res.status(200).json({ success: true, categories });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch categories" });
@@ -12,54 +12,60 @@ export const getCategories = async (req, res) => {
 
 export const getCategoryCars = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id);
     const { page = 1, limit = 10 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const pageNumber = parseInt(page);
-    const limitNumber = parseInt(limit);
-    const skip = (pageNumber - 1) * limitNumber;
-
-    const [cars, total] = await Promise.all([
-      Car.find({ category: id, isSuspended: false })
-        .skip(skip)
-        .limit(limitNumber)
-        .populate("companyId", "name rating city")
-        .populate("category", "name icon")
-        .lean(),
-      Car.countDocuments({ category: id, isSuspended: false })
+    const [cars, total] = await prisma.$transaction([
+      prisma.car.findMany({
+        where: { categoryId: id, isSuspended: false },
+        skip,
+        take: parseInt(limit),
+        include: { 
+          company: { select: { name: true, rating: true, city: true, address: true, phone: true } }, 
+          category: { select: { name: true, icon: true } } 
+        }
+      }),
+      prisma.car.count({ where: { categoryId: id, isSuspended: false } })
     ]);
+
+    const carsWithDiscounts = await applyDiscountToCars(cars);
 
     res.status(200).json({
       success: true,
-      cars,
-      pagination: {
-        total,
-        page: pageNumber,
-        limit: limitNumber,
-        pages: Math.ceil(total / limitNumber)
-      }
+      cars: carsWithDiscounts,
+      pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) }
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch category cars" });
   }
 };
 
+// category.controller.js
 export const createCategory = async (req, res) => {
   try {
-    const { name, description, icon, image } = req.body;
-    const slug = name.toLowerCase().replace(/ /g, '-');
+    const { name, description } = req.body;
+    
+    // إضافة فحص بسيط
+    if (!name) {
+       return res.status(400).json({ success: false, message: "اسم الفئة مطلوب" });
+    }
 
-    const category = await Category.create({
-      name,
-      slug,
-      description,
-      icon,
-      image,
-      createdBy: req.user.id
+    const iconPath = req.file ? `/uploads/${req.file.filename}` : null;
+
+    const category = await prisma.category.create({
+      data: {
+        name,
+        description,
+        icon: iconPath,
+        slug: name.toLowerCase().replace(/ /g, '-')
+      }
     });
-
+    
     res.status(201).json({ success: true, category });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Error creating category" });
+    // هنا تكمن المشكلة: أنت ترسل رسالة عامة، غيرها لترى الخطأ الحقيقي:
+    console.error("Prisma Error:", error); 
+    res.status(500).json({ success: false, message: error.message }); 
   }
 };
