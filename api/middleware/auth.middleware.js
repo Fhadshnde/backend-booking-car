@@ -24,9 +24,12 @@ export const protect = async (req, res, next) => {
     });
 
     if (!user) {
+      // If user not found in new DB but token is valid, we don't want to crash/logout the app immediately
+      // We can just set req.user to null and let the controller handle it or return a soft error
+      req.user = null;
       return res.status(401).json({
         success: false,
-        message: "المستخدم غير موجود أو تم حذفه"
+        message: "المستخدم غير موجود. يرجى إعادة تسجيل الدخول"
       });
     }
 
