@@ -81,31 +81,36 @@ export const applyDiscountToCars = async (cars) => {
     });
   });
   
-  return cars.map(car => {
-    const discount = discountMap.get(car.id);
-    const discountPercentage = discount ? discount.discountPercentage : 0;
-    const originalPrice = car.pricePerDay;
-    const today = new Date();
-    const hasDirectDiscount = car.discountPrice > 0 && (!car.offerEndsAt || new Date(car.offerEndsAt) > today);
+  return cars
+    .filter(car => car && car.id) // Ensure car and id exist
+    .map(car => {
+      const discount = discountMap.get(car.id);
+      const discountPercentage = discount ? discount.discountPercentage : 0;
+      const originalPrice = car.pricePerDay || 0;
+      const today = new Date();
+      const hasDirectDiscount = car.discountPrice > 0 && (!car.offerEndsAt || new Date(car.offerEndsAt) > today);
 
-    let finalDiscountPercent = discountPercentage;
-    let finalCurrentPrice = originalPrice * (1 - discountPercentage / 100);
+      let finalDiscountPercent = discountPercentage;
+      let finalCurrentPrice = originalPrice * (1 - discountPercentage / 100);
 
-    if (hasDirectDiscount && (discountPercentage === 0 || car.discountPrice < finalCurrentPrice)) {
-      finalCurrentPrice = car.discountPrice;
-      finalDiscountPercent = Math.round(((originalPrice - finalCurrentPrice) / originalPrice) * 100);
-    }
-    
-    return {
-      ...car,
-      originalPrice,
-      discountedPrice: finalCurrentPrice,
-      currentPrice: finalCurrentPrice,
-      discountPercentage: finalDiscountPercent,
-      hasDiscount: finalDiscountPercent > 0,
-      discountAd: discount ? discount.discountAd : null
-    };
-  });
+      if (hasDirectDiscount && (discountPercentage === 0 || car.discountPrice < finalCurrentPrice)) {
+        finalCurrentPrice = car.discountPrice;
+        finalDiscountPercent = Math.round(((originalPrice - finalCurrentPrice) / originalPrice) * 100);
+      }
+      
+      return {
+        ...car,
+        brand: car.brand || { name: "Unknown" },
+        category: car.category || { name: "General" },
+        images: Array.isArray(car.images) && car.images.length > 0 ? car.images : ["https://cdn-icons-png.flaticon.com/512/744/744465.png"],
+        originalPrice,
+        discountedPrice: finalCurrentPrice,
+        currentPrice: finalCurrentPrice,
+        discountPercentage: finalDiscountPercent,
+        hasDiscount: finalDiscountPercent > 0,
+        discountAd: discount ? discount.discountAd : null
+      };
+    });
 };
 
 export const getCars = async (req, res) => {

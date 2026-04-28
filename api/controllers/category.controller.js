@@ -4,7 +4,8 @@ import { applyDiscountToCars } from "./car.controller.js";
 export const getCategories = async (req, res) => {
   try {
     const categories = await prisma.category.findMany({ where: { isActive: true } });
-    res.status(200).json({ success: true, categories });
+    const safeCategories = categories.filter(c => c && c.id);
+    res.status(200).json({ success: true, categories: safeCategories });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch categories" });
   }

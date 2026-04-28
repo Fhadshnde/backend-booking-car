@@ -6,7 +6,8 @@ export const getAllAds = async (req, res) => {
       where: { isActive: true },
       include: { cars: true } 
     });
-    res.status(200).json({ success: true, results: ads.length, ads });
+    const safeAds = ads.filter(a => a && a.id);
+    res.status(200).json({ success: true, results: safeAds.length, ads: safeAds });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch ads" });
   }
