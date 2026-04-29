@@ -173,15 +173,15 @@ export const confirmPayment = async (req, res) => {
     ]);
     updatedUser = results[1];
 
-      // Send notification outside of transaction
+    if (requiredFromWallet > 0) {
       notifyUser({
         userId: booking.userId,
         title: "تم خصم مبلغ من محفظتك 💳",
-        message: `تم خصم ${amountToPay.toLocaleString()} د.ع من محفظتك كدفعة للحجز #${booking.confirmationCode}.`,
+        message: `تم خصم ${requiredFromWallet.toLocaleString()} د.ع من محفظتك كدفعة للحجز #${booking.confirmationCode}.`,
         type: "wallet",
         relatedBooking: booking.id
       });
-    });
+    }
 
     const updatedBooking = await prisma.booking.findUnique({ where: { id } });
 
