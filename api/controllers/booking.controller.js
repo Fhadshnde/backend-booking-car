@@ -106,7 +106,9 @@ export const createBooking = async (req, res) => {
 
     let driverPrice = 0;
     if (hasDriver) {
-      const driverPricePerDay = car.driverPricePerDay || (globalSettings ? globalSettings.defaultDriverPrice : 15000);
+      const driverPricePerDay = (car.driverPricePerDay !== null && car.driverPricePerDay !== undefined) 
+        ? car.driverPricePerDay 
+        : (globalSettings?.defaultDriverPrice ?? 0);
       driverPrice = totalDays * driverPricePerDay;
     }
 
