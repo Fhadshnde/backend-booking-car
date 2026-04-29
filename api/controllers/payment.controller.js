@@ -1,11 +1,9 @@
 import { prisma } from "../lib/prisma.js";
+import { notifyUser } from "../services/notification.service.js";
+import crypto from "crypto";
 
-const generateFakePaymentId = () => {
-  return `pay_${Math.random().toString(36).substr(2, 12)}`;
-};
-
-const generateFakeTransactionId = () => {
-  return `txn_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+const generateTransactionId = () => {
+  return `txn_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
 };
 
 export const createPaymentIntent = async (req, res) => {
@@ -55,7 +53,7 @@ export const createPaymentIntent = async (req, res) => {
     }
 
     const paymentIntent = {
-      id: generateFakePaymentId(),
+      id: generateTransactionId().replace('txn_', 'pi_'),
       amount: Math.floor(amount),
       currency: "IQD",
       status: "requires_confirmation",
@@ -135,7 +133,7 @@ export const confirmPayment = async (req, res) => {
       }
     }
 
-    const transactionId = generateFakeTransactionId();
+    const transactionId = generateTransactionId();
 
     const dataToUpdate = {
       paymentStatus: "paid"
@@ -158,13 +156,12 @@ export const confirmPayment = async (req, res) => {
           where: { id: booking.userId },
           data: { walletBalance: { decrement: amountToPay } }
         }),
-        prisma.notification.create({
-          data: {
-            userId: booking.userId,
-            title: "تم خصم مبلغ من محفظتك",
-            message: `تم خصم ${amountToPay.toLocaleString()} د.ع من محفظتك كدفعة للحجز #${booking.confirmationCode}.`,
-            type: "wallet"
-          }
+        notifyUser({
+          userId: booking.userId,
+          title: "تم خصم مبلغ من محفظتك 💳",
+          message: `تم خصم ${amountToPay.toLocaleString()} د.ع من محفظتك كدفعة للحجز #${booking.confirmationCode}.`,
+          type: "wallet",
+          relatedBooking: booking.id
         })
       ]);
       updatedUser = results[1];

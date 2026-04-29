@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { notifyUser } from "../services/notification.service.js";
 
 export const getAdminDashboard = async (req, res) => {
   try {
@@ -149,6 +150,17 @@ export const approveCompany = async (req, res) => {
       data: { role: "company" }
     });
 
+    // Notify all users in this company
+    const users = await prisma.user.findMany({ where: { companyId: id }, select: { id: true } });
+    users.forEach(u => {
+      notifyUser({
+        userId: u.id,
+        title: "تهانينا! تم قبول شركتكم 🎊",
+        message: `تمت الموافقة على انضمام شركة "${updatedCompany.name}" إلى منصتنا. يمكنك الآن البدء في إضافة سياراتك.`,
+        type: "general"
+      });
+    });
+
     res.status(200).json({
       success: true,
       message: "Company approved successfully",
@@ -181,6 +193,17 @@ export const rejectCompany = async (req, res) => {
       success: true,
       message: "Company rejected successfully",
       company: updatedCompany
+    });
+
+    // Notify users in the company
+    const users = await prisma.user.findMany({ where: { companyId: parseInt(companyId) }, select: { id: true } });
+    users.forEach(u => {
+      notifyUser({
+        userId: u.id,
+        title: "نعتذر، تم رفض طلب الشركة ❌",
+        message: `تم رفض طلب انضمام شركتك. السبب: ${rejectionReason}`,
+        type: "general"
+      });
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -238,6 +261,15 @@ export const cancelBookingAdmin = async (req, res) => {
       success: true,
       message: "Booking cancelled successfully",
       booking: updatedBooking
+    });
+
+    // Notify User
+    notifyUser({
+      userId: booking.userId,
+      title: "تنبيه: تم إلغاء حجزك من قبل الإدارة ⚠️",
+      message: `تم إلغاء حجزك #${booking.confirmationCode}. السبب: ${reason || "غير محدد"}`,
+      type: "booking",
+      relatedBooking: booking.id
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

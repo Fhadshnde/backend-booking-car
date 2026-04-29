@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import bcrypt from "bcryptjs";
+import { notifyUser } from "../services/notification.service.js";
 
 export const getUserProfile = async (req, res) => {
   try {
@@ -320,13 +321,11 @@ export const approveTopUpWallet = async (req, res) => {
           where: { id: topUpRequest.userId },
           data: { walletBalance: { increment: topUpRequest.amount } }
         }),
-        prisma.notification.create({
-          data: {
-            userId: topUpRequest.userId,
-            title: "تم شحن محفظتك!",
-            message: `تم الموافقة على طلب الشحن بمبلغ ${topUpRequest.amount.toLocaleString()} د.ع. رصيدك الآن جاهز للاستخدام.`,
-            type: "wallet"
-          }
+        notifyUser({
+          userId: topUpRequest.userId,
+          title: "تم شحن محفظتك! ✅",
+          message: `تم الموافقة على طلب الشحن بمبلغ ${topUpRequest.amount.toLocaleString()} د.ع. رصيدك الآن جاهز للاستخدام.`,
+          type: "wallet"
         })
       ]);
       res.status(200).json({ success: true, message: "تمت الموافقة وشحن المحفظة بنجاح" });
@@ -336,13 +335,11 @@ export const approveTopUpWallet = async (req, res) => {
           where: { id: parseInt(id) },
           data: { status: "rejected" }
         }),
-        prisma.notification.create({
-          data: {
-            userId: topUpRequest.userId,
-            title: "مرفوض: طلب شحن المحفظة",
-            message: `نعتذر، تم رفض طلب شحن المحفظة بمبلغ ${topUpRequest.amount.toLocaleString()} د.ع. يرجى مراجعة الإدارة.`,
-            type: "wallet"
-          }
+        notifyUser({
+          userId: topUpRequest.userId,
+          title: "مرفوض: طلب شحن المحفظة ❌",
+          message: `نعتذر، تم رفض طلب شحن المحفظة بمبلغ ${topUpRequest.amount.toLocaleString()} د.ع. يرجى مراجعة الإدارة.`,
+          type: "wallet"
         })
       ]);
       res.status(200).json({ success: true, message: "تم رفض الطلب بنجاح" });
