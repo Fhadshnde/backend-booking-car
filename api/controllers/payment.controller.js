@@ -158,7 +158,9 @@ export const confirmPayment = async (req, res) => {
       dataToUpdate.status = "confirmed";
       if (paymentType === "full" || paymentType === "remaining") {
         if (paymentMethod !== "cash") {
-          dataToUpdate.deposit = booking.totalPrice;
+          // نُحدّث الـ deposit ليساوي المبلغ الصافي المتبقي (الإجمالي - كل خصومات المحفظة)
+          const totalWalletUsed = (booking.walletDiscount || 0) + requiredFromWallet;
+          dataToUpdate.deposit = Math.max(0, booking.totalPrice - totalWalletUsed);
         }
       }
     }
