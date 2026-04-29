@@ -208,6 +208,8 @@ model Booking {
   hasDriver                      Boolean        @default(false)
   driverId                       Int?
   driverPrice                    Float          @default(0)
+  driverDailyHours               Int            @default(8)
+  driverOvertimePrice            Float          @default(0)
   currentLat                     Float?
   currentLng                     Float?
   pickupLat                      Float?
@@ -296,6 +298,8 @@ model Setting {
   cashbackPercentage           Float    @default(0.05)
   minCashbackToUse             Float    @default(10000)
   defaultDriverPrice           Float    @default(15000)
+  driverDailyHours             Int      @default(8)
+  driverOvertimePrice          Float    @default(5000)
   updatedBy                    Int
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
