@@ -26,7 +26,7 @@ export const applyDiscountToCar = async (car) => {
 
   // Check if car has its own direct discountPrice that is better or if no Ad exists
   const today = new Date();
-  const hasDirectDiscount = car.discountPrice > 0 && (!car.offerEndsAt || new Date(car.offerEndsAt) > today);
+  const hasDirectDiscount = car.discountPrice > 0 && car.discountPrice < originalPrice;
   
   const originalPrice = car.pricePerDay;
   let currentPrice = originalPrice;
@@ -88,7 +88,9 @@ export const applyDiscountToCars = async (cars) => {
       const discountPercentage = discount ? discount.discountPercentage : 0;
       const originalPrice = car.pricePerDay || 0;
       const today = new Date();
-      const hasDirectDiscount = car.discountPrice > 0 && (!car.offerEndsAt || new Date(car.offerEndsAt) > today);
+      
+      // Be more lenient with direct discounts
+      const hasDirectDiscount = car.discountPrice > 0 && car.discountPrice < originalPrice;
 
       let finalDiscountPercent = discountPercentage;
       let finalCurrentPrice = originalPrice * (1 - discountPercentage / 100);
@@ -98,6 +100,11 @@ export const applyDiscountToCars = async (cars) => {
         finalDiscountPercent = Math.round(((originalPrice - finalCurrentPrice) / originalPrice) * 100);
       }
       
+      // Final safety check: if we have a percent but current price is same as original, or vice versa
+      if (finalDiscountPercent > 0 && finalCurrentPrice >= originalPrice) {
+          finalCurrentPrice = originalPrice * (1 - finalDiscountPercent / 100);
+      }
+
       return {
         ...car,
         brand: car.brand || { name: "Unknown" },
