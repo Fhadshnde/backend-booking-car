@@ -155,16 +155,18 @@ export const confirmPayment = async (req, res) => {
         prisma.user.update({
           where: { id: booking.userId },
           data: { walletBalance: { decrement: amountToPay } }
-        }),
-        notifyUser({
-          userId: booking.userId,
-          title: "تم خصم مبلغ من محفظتك 💳",
-          message: `تم خصم ${amountToPay.toLocaleString()} د.ع من محفظتك كدفعة للحجز #${booking.confirmationCode}.`,
-          type: "wallet",
-          relatedBooking: booking.id
         })
       ]);
       updatedUser = results[1];
+
+      // Send notification outside of transaction
+      notifyUser({
+        userId: booking.userId,
+        title: "تم خصم مبلغ من محفظتك 💳",
+        message: `تم خصم ${amountToPay.toLocaleString()} د.ع من محفظتك كدفعة للحجز #${booking.confirmationCode}.`,
+        type: "wallet",
+        relatedBooking: booking.id
+      });
     } else {
       await prisma.booking.update({ where: { id }, data: dataToUpdate });
     }
