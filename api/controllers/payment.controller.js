@@ -119,7 +119,9 @@ export const confirmPayment = async (req, res) => {
     if (paymentType === "deposit") {
       amountToPay = booking.deposit;
     } else if (paymentType === "full") {
-      amountToPay = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0));
+      // المبلغ المتبقي = الإجمالي - خصم المحفظة - العربون (إذا تم دفعه مسبقاً)
+      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial") ? booking.deposit : 0;
+      amountToPay = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
     }
 
     // التحقق من رصيد المحفظة إذا اختار الدفع عبرها
