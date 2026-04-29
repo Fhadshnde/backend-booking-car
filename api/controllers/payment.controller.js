@@ -46,13 +46,13 @@ export const createPaymentIntent = async (req, res) => {
       description = `دفع عربون حجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else if (paymentType === "remaining") {
       // المبلغ المتبقي الحقيقي = الإجمالي - خصم المحفظة - العربون المدفوع
-      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial") ? booking.deposit : 0;
+      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial" || booking.paymentStatus === "paid") ? (booking.deposit || 0) : 0;
       amount = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
       description = `دفع المبلغ المتبقي لحجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else if (paymentType === "full") {
       // المبلغ المطلوب لكامل الحجز = الإجمالي - ما تم خصمه من المحفظة
       // إذا كان قد دفع العربون مسبقاً، نطرحه أيضاً
-      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial") ? booking.deposit : 0;
+      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial" || booking.paymentStatus === "paid") ? (booking.deposit || 0) : 0;
       amount = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
       description = `دفع كامل مبلغ حجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else {
@@ -127,7 +127,8 @@ export const confirmPayment = async (req, res) => {
     if (paymentType === "deposit") {
       totalDue = booking.deposit;
     } else if (paymentType === "remaining" || paymentType === "full") {
-      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial") ? booking.deposit : 0;
+      // نتحقق من المبالغ التي دُفعت فعلياً (سواء كان عربوناً تم التحقق منه أو دفعاً كاملاً سابقاً)
+      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial" || booking.paymentStatus === "paid") ? (booking.deposit || 0) : 0;
       totalDue = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
     }
 
