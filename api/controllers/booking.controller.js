@@ -148,6 +148,14 @@ export const createBooking = async (req, res) => {
     }
 
     const depositAmount = Math.max(0, initialDepositAmount - walletDiscount);
+    
+    // Determine initial payment status
+    let initialPaymentStatus = "pending";
+    if (walletDiscount >= totalPrice) {
+      initialPaymentStatus = "paid";
+    } else if (walletDiscount >= initialDepositAmount) {
+      initialPaymentStatus = "verified"; // Covered deposit via wallet
+    }
 
     const generateConfirmationCode = () => {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789";
@@ -184,7 +192,7 @@ export const createBooking = async (req, res) => {
           totalPrice,
           deposit: depositAmount,
           status: "pending",
-          paymentStatus: "pending",
+          paymentStatus: initialPaymentStatus,
           confirmationCode,
           pickupLocation: pickupLocation || "مكتب الشركة",
           dropoffLocation: dropoffLocation || "مكتب الشركة",
