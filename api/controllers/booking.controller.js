@@ -208,6 +208,7 @@ export const createBooking = async (req, res) => {
           driverPrice: driverPrice,
           driverDailyHours: globalSettings?.driverDailyHours || 8,
           driverOvertimePrice: globalSettings?.driverOvertimePrice || 0,
+          deliveryFee: (pickupLocation && pickupLocation !== "مكتب الشركة الرئيسي" && !hasDriver) ? (globalSettings?.deliveryFee || 0) : 0,
           promoCodeId: promoCodeId,
           discountAmount: discountAmount,
         },
