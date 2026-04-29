@@ -353,6 +353,16 @@ export const unsuspendCar = async (req, res) => {
         isAvailable: true
       }
     });
+    res.status(200).json({
+      success: true,
+      message: "Car unsuspended successfully",
+      car
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const approveRefund = async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -426,16 +436,6 @@ export const rejectRefund = async (req, res) => {
     });
 
     res.status(200).json({ success: true, message: "تم رفض طلب الاسترداد" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-    res.status(200).json({
-      success: true,
-      message: "Car unsuspended successfully",
-      car
-    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
