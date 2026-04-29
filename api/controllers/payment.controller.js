@@ -181,9 +181,7 @@ export const confirmPayment = async (req, res) => {
         type: "wallet",
         relatedBooking: booking.id
       });
-    } else {
-      await prisma.booking.update({ where: { id }, data: dataToUpdate });
-    }
+    });
 
     const updatedBooking = await prisma.booking.findUnique({ where: { id } });
 
