@@ -210,6 +210,7 @@ model Booking {
   driverPrice                    Float          @default(0)
   driverDailyHours               Int            @default(8)
   driverOvertimePrice            Float          @default(0)
+  deliveryFee                    Float          @default(0)
   currentLat                     Float?
   currentLng                     Float?
   pickupLat                      Float?
@@ -300,6 +301,7 @@ model Setting {
   defaultDriverPrice           Float    @default(15000)
   driverDailyHours             Int      @default(8)
   driverOvertimePrice          Float    @default(5000)
+  deliveryFee                  Float    @default(10000)
   updatedBy                    Int
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
