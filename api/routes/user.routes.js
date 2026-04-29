@@ -6,6 +6,10 @@ const router = express.Router();
 
 router.get("/profile", protect, getUserProfile);
 router.put("/profile", protect, updateUserProfile);
+router.put("/fcm-token", protect, (req, res, next) => {
+  // We'll import this controller function next
+  import("../controllers/user.controller.js").then(m => m.updateFcmToken(req, res)).catch(next);
+});
 
 router.post("/kyc", protect, uploadKycDocs);
 router.put("/kyc/:id/status", protect, restrictTo("admin"), updateKycStatus);

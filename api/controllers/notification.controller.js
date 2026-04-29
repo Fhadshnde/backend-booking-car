@@ -58,19 +58,8 @@ export const deleteNotification = async (req, res) => {
   }
 };
 
-export const sendNotification = async ({ userId, title, message, type, relatedBooking, relatedCompany }) => {
-  try {
-    await prisma.notification.create({
-      data: {
-        userId: parseInt(userId),
-        title,
-        message,
-        type: type || "general",
-        bookingId: relatedBooking ? parseInt(relatedBooking) : null,
-        companyId: relatedCompany ? parseInt(relatedCompany) : null
-      }
-    });
-  } catch (error) {
-    console.error("Failed to send notification:", error.message);
-  }
+import { notifyUser } from "../services/notification.service.js";
+
+export const sendNotification = async (args) => {
+  return notifyUser(args);
 };

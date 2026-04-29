@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { notifyUser } from "../services/notification.service.js";
 
 export const createBooking = async (req, res) => {
   try {
@@ -228,6 +229,35 @@ export const createBooking = async (req, res) => {
     });
 
     res.status(201).json({ success: true, booking: result.booking, user: result.user });
+
+    // Send Notifications (Non-blocking)
+    const booking = result.booking;
+    // 1. Notify User
+    notifyUser({
+      userId: booking.userId,
+      title: "تم استلام طلب الحجز 🚗",
+      message: `تم استلام طلب حجزك للسيارة ${booking.car.model}. سنقوم بإشعارك عند تأكيد الحجز من قبل الشركة.`,
+      type: "booking",
+      relatedBooking: booking.id,
+      relatedCompany: booking.companyId
+    });
+
+    // 2. Notify Company Users
+    prisma.user.findMany({
+      where: { companyId: booking.companyId, role: "company" },
+      select: { id: true }
+    }).then(companyUsers => {
+      companyUsers.forEach(admin => {
+        notifyUser({
+          userId: admin.id,
+          title: "حجز جديد وارد! 🔔",
+          message: `لديك طلب حجز جديد للسيارة ${booking.car.model} من المستخدم ${booking.user.name}.`,
+          type: "booking",
+          relatedBooking: booking.id,
+          relatedCompany: booking.companyId
+        });
+      });
+    });
   } catch (error) {
     console.error("Booking Creation Error:", error);
     res.status(500).json({ success: false, message: error.message || "حدث خطأ أثناء إتمام الحجز" });
@@ -311,14 +341,8 @@ export const cancelBooking = async (req, res) => {
       );
       
       operations.push(
-        prisma.notification.create({
-          data: {
-            userId: booking.userId,
-            title: "تم استرداد مبلغ للمحفظة",
-            message: `تم استرداد ${refundAmount.toLocaleString()} د.ع إلى محفظتك بعد إلغاء الحجز #${booking.confirmationCode} (50% من العربون).`,
-            type: "wallet",
-            bookingId: booking.id
-          }
+        prisma.notification.deleteMany({ // Replace manual create with our service call later
+           where: { id: -1 } // dummy
         })
       );
       message = `تم الإلغاء بنجاح واسترداد ${refundAmount.toLocaleString()} IQD إلى محفظتك`;
@@ -326,6 +350,17 @@ export const cancelBooking = async (req, res) => {
 
     const results = await prisma.$transaction(operations);
     const updatedBooking = results[0];
+
+    // Send Notification using service
+    notifyUser({
+      userId: booking.userId,
+      title: "تم إلغاء الحجز ❌",
+      message: refundAmount > 0 
+        ? `تم إلغاء حجزك #${booking.confirmationCode} واسترداد ${refundAmount.toLocaleString()} د.ع إلى محفظتك.`
+        : `تم إلغاء حجزك #${booking.confirmationCode} بنجاح.`,
+      type: "booking",
+      relatedBooking: booking.id
+    });
 
     res.status(200).json({ 
       success: true, 
@@ -437,6 +472,16 @@ export const confirmBooking = async (req, res) => {
       include: { user: true, car: true, company: true }
     });
     res.status(200).json({ success: true, booking: updated });
+
+    // Notify User
+    notifyUser({
+      userId: updated.userId,
+      title: "تم تأكيد حجزك! ✅",
+      message: `مبروك! تم تأكيد حجزك للسيارة ${updated.car.model}. يمكنك الآن متابعة تفاصيل الرحلة.`,
+      type: "booking",
+      relatedBooking: updated.id,
+      relatedCompany: updated.companyId
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

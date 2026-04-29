@@ -351,3 +351,21 @@ export const approveTopUpWallet = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const updateFcmToken = async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    if (!fcmToken) {
+      return res.status(400).json({ success: false, message: "Token is required" });
+    }
+
+    await prisma.user.update({
+      where: { id: parseInt(req.user.id) },
+      data: { fcmToken }
+    });
+
+    res.status(200).json({ success: true, message: "FCM token updated successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to update FCM token" });
+  }
+};
