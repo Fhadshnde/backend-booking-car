@@ -113,7 +113,7 @@ export const createBooking = async (req, res) => {
       driverPrice = totalDays * driverPricePerDay;
     }
 
-    const deliveryFee = (pickupLocation && pickupLocation !== "مكتب الشركة الرئيسي" && !hasDriver) ? (globalSettings?.deliveryFee || 0) : 0;
+    const deliveryFee = req.body.deliveryFee !== undefined ? Number(req.body.deliveryFee) : ((pickupLocation && pickupLocation !== "مكتب الشركة الرئيسي" && !hasDriver) ? (globalSettings?.deliveryFee || 0) : 0);
     let totalPrice = basePrice + insurancePrice + driverPrice + deliveryFee;
 
     let discountAmount = 0;
