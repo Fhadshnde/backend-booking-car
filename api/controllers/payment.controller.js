@@ -10,6 +10,9 @@ const generateFakeTransactionId = () => {
 
 export const createPaymentIntent = async (req, res) => {
   try {
+    const { bookingId, paymentType } = req.body;
+    const id = parseInt(bookingId);
+
     console.log("--- تم استدعاء createPaymentIntent ---");
     console.log("الطلب:", { bookingId, paymentType });
 
