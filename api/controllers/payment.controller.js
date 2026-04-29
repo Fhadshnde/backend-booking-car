@@ -45,8 +45,9 @@ export const createPaymentIntent = async (req, res) => {
       amount = booking.deposit;
       description = `دفع عربون حجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else if (paymentType === "full") {
-      // المبلغ المطلوب لكامل الحجز = الإجمالي - ما تم خصمه من المحفظة
-      amount = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0));
+      // المبلغ المتبقي = الإجمالي - خصم المحفظة - العربون (إذا تم دفعه مسبقاً)
+      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial") ? booking.deposit : 0;
+      amount = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
       description = `دفع كامل مبلغ حجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else {
       return res.status(400).json({ success: false, message: "نوع الدفع غير صالح" });
