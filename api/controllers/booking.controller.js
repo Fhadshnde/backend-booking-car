@@ -191,7 +191,7 @@ export const createBooking = async (req, res) => {
           pricePerDay: currentPrice,
           totalPrice,
           deposit: depositAmount,
-          status: "pending",
+          status: (initialPaymentStatus === "paid" || initialPaymentStatus === "verified") ? "confirmed" : "pending",
           paymentStatus: initialPaymentStatus,
           confirmationCode,
           pickupLocation: pickupLocation || "مكتب الشركة",
@@ -241,10 +241,13 @@ export const createBooking = async (req, res) => {
     // Send Notifications (Non-blocking)
     const booking = result.booking;
     // 1. Notify User
+    const isConfirmed = booking.status === "confirmed";
     notifyUser({
       userId: booking.userId,
-      title: "تم استلام طلب الحجز 🚗",
-      message: `تم استلام طلب حجزك للسيارة ${booking.car.model}. سنقوم بإشعارك عند تأكيد الحجز من قبل الشركة.`,
+      title: isConfirmed ? "تم تأكيد الحجز بنجاح! ✅" : "تم استلام طلب الحجز 🚗",
+      message: isConfirmed 
+        ? `تم تأكيد حجزك للسيارة ${booking.car.model} بنجاح. يمكنك مراجعة التفاصيل في قائمة حجوزاتك.`
+        : `تم استلام طلب حجزك للسيارة ${booking.car.model}. سنقوم بإشعارك عند تأكيد الحجز من قبل الشركة.`,
       type: "booking",
       relatedBooking: booking.id,
       relatedCompany: booking.companyId
