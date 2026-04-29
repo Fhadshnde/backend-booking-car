@@ -91,6 +91,7 @@ export const createPaymentIntent = async (req, res) => {
         discountAmount: booking.discountAmount || 0,
         hasDriver: booking.hasDriver,
         driverPrice: booking.driverPrice,
+        deliveryFee: booking.deliveryFee || 0,
         companyName: booking.company.name,
         companyLogo: booking.company.logo,
         carImages: booking.car.images
