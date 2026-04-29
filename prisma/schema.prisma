@@ -313,8 +313,9 @@ model Setting {
   insurancePrice     Float    @default(50000)
   cashbackPercentage Float    @default(0.05)
   minCashbackToUse   Float    @default(10000)
-  defaultDriverPrice Float    @default(15000)
-  updatedBy          Int
+  defaultDriverPrice           Float    @default(15000)
+  cancellationRefundPercentage Float    @default(0.5)
+  updatedBy                    Int
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

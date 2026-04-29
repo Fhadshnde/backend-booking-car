@@ -315,10 +315,14 @@ export const cancelBooking = async (req, res) => {
     let refundAmount = 0;
     let message = "تم الإلغاء بنجاح";
 
+    // جلب الإعدادات الحالية من قاعدة البيانات
+    const settings = await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } });
+    const refundPercentage = settings?.cancellationRefundPercentage ?? 0.5;
+
     // إذا كان المستخدم قد دفع (عربون أو كامل المبلغ)
     if (booking.paymentStatus === "paid" || booking.paymentStatus === "partial" || booking.paymentStatus === "verified") {
-      // استرداد 50% من العربون (حسب سياسة الشركة الموضحة في الفرونت اند)
-      refundAmount = booking.deposit * 0.5;
+      // استرداد النسبة المحددة من العربون
+      refundAmount = booking.deposit * refundPercentage;
     }
 
     const operations = [

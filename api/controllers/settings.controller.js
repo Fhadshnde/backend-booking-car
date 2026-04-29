@@ -25,7 +25,8 @@ export const getSettings = async (req, res) => {
         insurancePrice: settings.insurancePrice,
         cashbackPercentage: settings.cashbackPercentage,
         minCashbackToUse: settings.minCashbackToUse,
-        defaultDriverPrice: settings.defaultDriverPrice
+        defaultDriverPrice: settings.defaultDriverPrice,
+        cancellationRefundPercentage: settings.cancellationRefundPercentage
       }
     });
   } catch (error) {
@@ -48,6 +49,7 @@ export const updateSettings = async (req, res) => {
           cashbackPercentage: cashbackPercentage || 0.05,
           minCashbackToUse: minCashbackToUse || 10000,
           defaultDriverPrice: defaultDriverPrice || 15000,
+          cancellationRefundPercentage: req.body.cancellationRefundPercentage || 0.5,
           updatedBy: parseInt(req.user.id)
         }
       });
@@ -60,6 +62,7 @@ export const updateSettings = async (req, res) => {
           cashbackPercentage: cashbackPercentage !== undefined ? cashbackPercentage : settings.cashbackPercentage,
           minCashbackToUse: minCashbackToUse !== undefined ? minCashbackToUse : settings.minCashbackToUse,
           defaultDriverPrice: defaultDriverPrice !== undefined ? defaultDriverPrice : settings.defaultDriverPrice,
+          cancellationRefundPercentage: req.body.cancellationRefundPercentage !== undefined ? req.body.cancellationRefundPercentage : settings.cancellationRefundPercentage,
           updatedBy: parseInt(req.user.id)
         }
       });
@@ -72,7 +75,8 @@ export const updateSettings = async (req, res) => {
         insurancePrice: settings.insurancePrice,
         cashbackPercentage: settings.cashbackPercentage,
         minCashbackToUse: settings.minCashbackToUse,
-        defaultDriverPrice: settings.defaultDriverPrice
+        defaultDriverPrice: settings.defaultDriverPrice,
+        cancellationRefundPercentage: settings.cancellationRefundPercentage
       }
     });
   } catch (error) {
