@@ -297,7 +297,8 @@ export const getUserBookings = async (req, res) => {
       where: { userId: req.user.id },
       include: {
         car: { select: { model: true, images: true, licensePlate: true, pricePerDay: true } },
-        company: { select: { name: true, address: true, phone: true } }
+        company: { select: { name: true, address: true, phone: true } },
+        driver: { select: { name: true, phone: true, image: true } }
       },
       orderBy: { createdAt: "desc" }
     });
