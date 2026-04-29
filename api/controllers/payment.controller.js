@@ -136,7 +136,7 @@ export const confirmPayment = async (req, res) => {
     const transactionId = generateTransactionId();
 
     const dataToUpdate = {
-      paymentStatus: "paid"
+      paymentStatus: paymentType === "deposit" ? "verified" : "paid"
     };
 
     if (paymentType === "deposit") {
