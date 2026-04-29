@@ -24,7 +24,8 @@ export const getSettings = async (req, res) => {
         depositPercentage: settings.depositPercentage,
         insurancePrice: settings.insurancePrice,
         cashbackPercentage: settings.cashbackPercentage,
-        minCashbackToUse: settings.minCashbackToUse
+        minCashbackToUse: settings.minCashbackToUse,
+        defaultDriverPrice: settings.defaultDriverPrice
       }
     });
   } catch (error) {
@@ -34,7 +35,7 @@ export const getSettings = async (req, res) => {
 
 export const updateSettings = async (req, res) => {
   try {
-    const { depositPercentage, insurancePrice, cashbackPercentage, minCashbackToUse } = req.body;
+    const { depositPercentage, insurancePrice, cashbackPercentage, minCashbackToUse, defaultDriverPrice } = req.body;
     let settings = await prisma.setting.findFirst({
       orderBy: { createdAt: "desc" }
     });
@@ -46,6 +47,7 @@ export const updateSettings = async (req, res) => {
           insurancePrice: insurancePrice || 50000,
           cashbackPercentage: cashbackPercentage || 0.05,
           minCashbackToUse: minCashbackToUse || 10000,
+          defaultDriverPrice: defaultDriverPrice || 15000,
           updatedBy: parseInt(req.user.id)
         }
       });
@@ -57,6 +59,7 @@ export const updateSettings = async (req, res) => {
           insurancePrice: insurancePrice !== undefined ? insurancePrice : settings.insurancePrice,
           cashbackPercentage: cashbackPercentage !== undefined ? cashbackPercentage : settings.cashbackPercentage,
           minCashbackToUse: minCashbackToUse !== undefined ? minCashbackToUse : settings.minCashbackToUse,
+          defaultDriverPrice: defaultDriverPrice !== undefined ? defaultDriverPrice : settings.defaultDriverPrice,
           updatedBy: parseInt(req.user.id)
         }
       });
@@ -68,7 +71,8 @@ export const updateSettings = async (req, res) => {
         depositPercentage: settings.depositPercentage,
         insurancePrice: settings.insurancePrice,
         cashbackPercentage: settings.cashbackPercentage,
-        minCashbackToUse: settings.minCashbackToUse
+        minCashbackToUse: settings.minCashbackToUse,
+        defaultDriverPrice: settings.defaultDriverPrice
       }
     });
   } catch (error) {

@@ -70,11 +70,30 @@ export const createBooking = async (req, res) => {
     const diffHours = diffTime / (1000 * 60 * 60);
     const totalDays = diffHours <= 24 ? 1 : Math.ceil(diffHours / 24);
 
-    // Calculate base price considering discounts
     const today = new Date();
-    const currentPrice = (car.discountPrice > 0 && (!car.offerEndsAt || new Date(car.offerEndsAt) > today))
-      ? car.discountPrice
-      : car.pricePerDay;
+    
+    // Logic matching car.controller.js: Check for active Ads first
+    const activeAd = await prisma.ad.findFirst({
+      where: {
+        cars: { some: { id: car.id } },
+        isActive: true,
+        endDate: { gte: today }
+      }
+    });
+
+    let discountPercentage = 0;
+    if (activeAd) {
+      discountPercentage = activeAd.discountPercentage;
+    }
+
+    const originalPrice = car.pricePerDay;
+    let currentPrice = originalPrice;
+
+    if (discountPercentage > 0) {
+      currentPrice = originalPrice * (1 - discountPercentage / 100);
+    } else if (car.discountPrice > 0 && (!car.offerEndsAt || new Date(car.offerEndsAt) > today)) {
+      currentPrice = car.discountPrice;
+    }
 
     const basePrice = totalDays * currentPrice;
 
@@ -118,7 +137,8 @@ export const createBooking = async (req, res) => {
       const user = await prisma.user.findUnique({ where: { id: req.user.id } });
       if (user.walletBalance >= walletAmount) {
         walletDiscount = walletAmount;
-        totalPrice = Math.max(0, totalPrice - walletDiscount);
+        // NOTE: We no longer subtract walletDiscount from totalPrice here 
+        // because totalPrice represents the trip cost before payments.
       } else {
         return res.status(400).json({ success: false, message: "رصيد المحفظة غير كافٍ" });
       }

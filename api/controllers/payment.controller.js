@@ -10,8 +10,8 @@ const generateFakeTransactionId = () => {
 
 export const createPaymentIntent = async (req, res) => {
   try {
-    const { bookingId, paymentType } = req.body;
-    const id = parseInt(bookingId);
+    console.log("--- تم استدعاء createPaymentIntent ---");
+    console.log("الطلب:", { bookingId, paymentType });
 
     const booking = await prisma.booking.findUnique({
       where: { id },
@@ -58,7 +58,14 @@ export const createPaymentIntent = async (req, res) => {
       description: description
     };
 
-    console.log("إنشاء عملية دفع:", { bookingId: booking.id, amount: paymentIntent.amount, paymentType });
+    console.log("تفاصيل الحجز المسترجعة للدفع:", {
+      id: booking.id,
+      totalPrice: booking.totalPrice,
+      deposit: booking.deposit,
+      driverPrice: booking.driverPrice,
+      discountAmount: booking.discountAmount,
+      pricePerDay: booking.pricePerDay
+    });
 
     res.status(200).json({
       success: true,
@@ -68,7 +75,8 @@ export const createPaymentIntent = async (req, res) => {
       bookingDetails: {
         id: booking.id,
         carName: `${booking.car.brand.name} ${booking.car.model}`,
-        carPricePerDay: booking.car.pricePerDay,
+        carPricePerDay: booking.pricePerDay, // The price saved at booking time
+        originalPrice: booking.car.pricePerDay, // The car's current list price
         startDate: booking.startDate,
         endDate: booking.endDate,
         totalDays: booking.totalDays,
@@ -78,6 +86,8 @@ export const createPaymentIntent = async (req, res) => {
         insurancePrice: booking.insurancePrice,
         walletDiscount: booking.walletDiscount || 0,
         discountAmount: booking.discountAmount || 0,
+        hasDriver: booking.hasDriver,
+        driverPrice: booking.driverPrice,
         companyName: booking.company.name,
         companyLogo: booking.company.logo,
         carImages: booking.car.images
