@@ -206,6 +206,8 @@ export const createBooking = async (req, res) => {
           walletDiscount: walletDiscount,
           hasDriver: hasDriver || false,
           driverPrice: driverPrice,
+          driverDailyHours: globalSettings?.driverDailyHours || 8,
+          driverOvertimePrice: globalSettings?.driverOvertimePrice || 0,
           promoCodeId: promoCodeId,
           discountAmount: discountAmount,
         },
