@@ -1,5 +1,19 @@
 import express from "express";
-import { getAdminDashboard, toggleUserStatus, approveCompany, rejectCompany, getPendingCompanies, cancelBookingAdmin, getBookingReports, suspendCar, unsuspendCar, getComplaints, respondToComplaint } from "../controllers/admin.controller.js";
+import { 
+  getAdminDashboard, 
+  toggleUserStatus, 
+  approveCompany, 
+  rejectCompany, 
+  getPendingCompanies, 
+  cancelBookingAdmin, 
+  getBookingReports, 
+  suspendCar, 
+  unsuspendCar, 
+  getComplaints, 
+  respondToComplaint,
+  approveRefund,
+  rejectRefund
+} from "../controllers/admin.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
@@ -22,5 +36,8 @@ router.put("/cars/:carId/unsuspend", unsuspendCar);
 
 router.get("/complaints", getComplaints);
 router.put("/complaints/:complaintId/respond", respondToComplaint);
+
+router.put("/bookings/:bookingId/refund/approve", approveRefund);
+router.put("/bookings/:bookingId/refund/reject", rejectRefund);
 
 export default router;

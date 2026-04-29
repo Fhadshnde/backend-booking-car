@@ -4,8 +4,13 @@ export const validatePromoCode = async (req, res) => {
   try {
     const { code, amount } = req.body;
     
-    const promo = await prisma.promoCode.findUnique({
-      where: { code }
+    const promo = await prisma.promoCode.findFirst({
+      where: { 
+        code: {
+          equals: code,
+          mode: 'insensitive'
+        }
+      }
     });
 
     if (!promo || !promo.isActive) {

@@ -353,6 +353,83 @@ export const unsuspendCar = async (req, res) => {
         isAvailable: true
       }
     });
+export const approveRefund = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const id = parseInt(bookingId);
+
+    const booking = await prisma.booking.findUnique({
+      where: { id },
+      include: { user: true }
+    });
+
+    if (!booking || booking.refundStatus !== "pending") {
+      return res.status(400).json({ success: false, message: "لا يوجد طلب استرداد معلق لهذا الحجز" });
+    }
+
+    const refundAmount = booking.refundAmount || 0;
+
+    await prisma.$transaction([
+      prisma.booking.update({
+        where: { id },
+        data: {
+          refundStatus: "approved",
+          refundDate: new Date()
+        }
+      }),
+      prisma.user.update({
+        where: { id: booking.userId },
+        data: { walletBalance: { increment: refundAmount } }
+      })
+    ]);
+
+    notifyUser({
+      userId: booking.userId,
+      title: "تمت الموافقة على استرداد المبلغ ✅",
+      message: `تمت الموافقة على استرداد ${refundAmount.toLocaleString()} د.ع إلى محفظتك للحجز #${booking.confirmationCode}.`,
+      type: "wallet",
+      relatedBooking: booking.id
+    });
+
+    res.status(200).json({ success: true, message: "تمت الموافقة على الاسترداد بنجاح" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const rejectRefund = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { reason } = req.body;
+    const id = parseInt(bookingId);
+
+    const booking = await prisma.booking.findUnique({ where: { id } });
+
+    if (!booking || booking.refundStatus !== "pending") {
+      return res.status(400).json({ success: false, message: "لا يوجد طلب استرداد معلق لهذا الحجز" });
+    }
+
+    await prisma.booking.update({
+      where: { id },
+      data: {
+        refundStatus: "rejected",
+        updatedAt: new Date()
+      }
+    });
+
+    notifyUser({
+      userId: booking.userId,
+      title: "تم رفض طلب استرداد المبلغ ❌",
+      message: `نعتذر، تم رفض طلب استرداد المبلغ للحجز #${booking.confirmationCode}. السبب: ${reason || "غير محدد"}.`,
+      type: "booking",
+      relatedBooking: booking.id
+    });
+
+    res.status(200).json({ success: true, message: "تم رفض طلب الاسترداد" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
     res.status(200).json({
       success: true,

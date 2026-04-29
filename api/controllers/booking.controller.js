@@ -330,26 +330,17 @@ export const cancelBooking = async (req, res) => {
         where: { id: Number(id) },
         data: {
           status: "cancelled",
+          refundStatus: refundAmount > 0 ? "pending" : null,
+          refundAmount: refundAmount > 0 ? refundAmount : 0,
           updatedAt: new Date()
         },
         include: { car: true }
       })
     ];
 
-    if (refundAmount > 0) {
-      operations.push(
-        prisma.user.update({
-          where: { id: booking.userId },
-          data: { walletBalance: { increment: refundAmount } }
-        })
-      );
-      
-      operations.push(
-        prisma.notification.deleteMany({ // Replace manual create with our service call later
-           where: { id: -1 } // dummy
-        })
-      );
-      message = `تم الإلغاء بنجاح واسترداد ${refundAmount.toLocaleString()} IQD إلى محفظتك`;
+    message = "تم إلغاء الحجز بنجاح. سيتم مراجعة استرداد المبلغ من قبل الإدارة.";
+    if (refundAmount === 0) {
+      message = "تم إلغاء الحجز بنجاح.";
     }
 
     const results = await prisma.$transaction(operations);
@@ -360,7 +351,7 @@ export const cancelBooking = async (req, res) => {
       userId: booking.userId,
       title: "تم إلغاء الحجز ❌",
       message: refundAmount > 0 
-        ? `تم إلغاء حجزك #${booking.confirmationCode} واسترداد ${refundAmount.toLocaleString()} د.ع إلى محفظتك.`
+        ? `تم إلغاء حجزك #${booking.confirmationCode}. طلب استرداد المبلغ (${refundAmount.toLocaleString()} د.ع) قيد المراجعة الآن.`
         : `تم إلغاء حجزك #${booking.confirmationCode} بنجاح.`,
       type: "booking",
       relatedBooking: booking.id
