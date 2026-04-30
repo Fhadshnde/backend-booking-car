@@ -153,32 +153,48 @@ export const confirmPayment = async (req, res) => {
     }
 
     const transactionId = generateTransactionId();
-
-    const dataToUpdate = {
-      paymentStatus: (paymentType === "deposit" || paymentMethod === "cash") ? (paymentMethod === "cash" ? "partial" : "verified") : "paid",
-      walletDiscount: { increment: requiredFromWallet }
-    };
-
-    if (paymentType === "deposit" || paymentType === "remaining" || paymentType === "full") {
-      dataToUpdate.status = "confirmed";
-      if (paymentType === "full" || paymentType === "remaining") {
-        if (paymentMethod !== "cash") {
-          // نُحدّث الـ deposit ليساوي المبلغ الصافي المتبقي (الإجمالي - كل خصومات المحفظة)
-          const totalWalletUsed = (booking.walletDiscount || 0) + requiredFromWallet;
-          dataToUpdate.deposit = Math.max(0, booking.totalPrice - totalWalletUsed);
-        }
-      }
+    
+    // حساب المبالغ الكلية بعد هذه العملية
+    const totalWalletUsed = (booking.walletDiscount || 0) + requiredFromWallet;
+    const requiredDeposit = Math.round(booking.totalPrice * 0.3);
+    
+    // تحديد حالة الدفع الجديدة بناءً على إجمالي ما تم دفعه (محفظة + نقد)
+    let newPaymentStatus = booking.paymentStatus;
+    
+    // إذا كان إجمالي ما تم دفعه يغطي أو يتجاوز السعر الكلي
+    if (totalWalletUsed >= booking.totalPrice) {
+      newPaymentStatus = "paid";
+    } 
+    // إذا كان إجمالي ما تم دفعه يغطي العربون (30%)
+    else if (totalWalletUsed >= requiredDeposit) {
+      newPaymentStatus = "verified";
+    }
+    // إذا تم دفع جزء ولكن لم يصل للعربون
+    else if (totalWalletUsed > 0) {
+      newPaymentStatus = "pending"; // يبقى قيد الانتظار حتى اكتمال العربون
     }
 
-    let updatedUser = null;
+    const dataToUpdate = {
+      paymentStatus: newPaymentStatus,
+      walletDiscount: { increment: requiredFromWallet },
+      // نُحدّث الـ deposit (المتبقي للعربون) بطرح ما تم دفعه الآن منه
+      deposit: Math.max(0, (booking.deposit || 0) - requiredFromWallet)
+    };
+
+    // إذا اكتمل العربون أو المبلغ بالكامل، نؤكد الحجز
+    if (newPaymentStatus === "verified" || newPaymentStatus === "paid") {
+      dataToUpdate.status = "confirmed";
+    }
+
     const results = await prisma.$transaction([
-      prisma.booking.update({ where: { id }, data: dataToUpdate }),
+      prisma.booking.update({ where: { id: id }, data: dataToUpdate }),
       prisma.user.update({
         where: { id: booking.userId },
         data: { walletBalance: { decrement: requiredFromWallet } }
       })
     ]);
-    updatedUser = results[1];
+
+    const updatedUser = results[1];
 
     if (requiredFromWallet > 0) {
       notifyUser({
