@@ -33,30 +33,25 @@ export const createPaymentIntent = async (req, res) => {
       return res.status(403).json({ success: false, message: "غير مصرح لك بتنفيذ هذا الإجراء" });
     }
 
+    const settings = await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } });
+    const depositPercentage = settings?.depositPercentage || 0.3;
+    const requiredDeposit = Math.floor(booking.totalPrice * depositPercentage);
+
     let amount = 0;
     let description = "";
 
     if (paymentType === "deposit") {
-      if (booking.paymentStatus === "paid") {
+      if (booking.paymentStatus === "paid" || booking.paymentStatus === "verified") {
         return res.status(400).json({ success: false, message: "تم دفع العربون مسبقاً" });
       }
-
-      // نستخدم مبلغ العربون المخزن فعلياً في الحجز لضمان التطابق
       amount = booking.deposit;
       description = `دفع عربون حجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
-    } else if (paymentType === "remaining") {
-      // المبلغ المتبقي الحقيقي = الإجمالي - خصم المحفظة - العربون المدفوع
-      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial" || booking.paymentStatus === "paid") ? (booking.deposit || 0) : 0;
+    } else if (paymentType === "remaining" || paymentType === "full") {
+      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "paid") ? requiredDeposit : 0;
       amount = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
-      description = `دفع المبلغ المتبقي لحجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
-    } else if (paymentType === "full") {
-      // المبلغ المطلوب لكامل الحجز = الإجمالي - ما تم خصمه من المحفظة
-      // إذا كان قد دفع العربون مسبقاً، نطرحه أيضاً
-      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial" || booking.paymentStatus === "paid") ? (booking.deposit || 0) : 0;
-      amount = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
-      description = `دفع كامل مبلغ حجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
+      description = paymentType === "remaining" ? `دفع المبلغ المتبقي لحجز السيارة ${booking.car.brand.name} ${booking.car.model}` : `دفع كامل مبلغ حجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else if (paymentType === "partial_wallet") {
-      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial" || booking.paymentStatus === "paid") ? (booking.deposit || 0) : 0;
+      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "paid") ? requiredDeposit : 0;
       amount = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
       description = `دفع جزء من المبلغ لحجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else {
@@ -127,12 +122,15 @@ export const confirmPayment = async (req, res) => {
     }
 
     // حساب المبلغ المطلوب دفعه قبل الخصم الجديد
+    const settings = await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } });
+    const depositPercentage = settings?.depositPercentage || 0.3;
+    const requiredDeposit = Math.floor(booking.totalPrice * depositPercentage);
+
     let totalDue = 0;
     if (paymentType === "deposit") {
       totalDue = booking.deposit;
     } else if (paymentType === "remaining" || paymentType === "full") {
-      // نتحقق من المبالغ التي دُفعت فعلياً (سواء كان عربوناً تم التحقق منه أو دفعاً كاملاً سابقاً)
-      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "partial" || booking.paymentStatus === "paid") ? (booking.deposit || 0) : 0;
+      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "paid") ? requiredDeposit : 0;
       totalDue = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
     }
 
@@ -156,7 +154,7 @@ export const confirmPayment = async (req, res) => {
     
     // حساب المبالغ الكلية بعد هذه العملية
     const totalWalletUsed = (booking.walletDiscount || 0) + requiredFromWallet;
-    const requiredDeposit = Math.round(booking.totalPrice * 0.3);
+    const requiredDepositAmount = requiredDeposit;
     
     // تحديد حالة الدفع الجديدة بناءً على إجمالي ما تم دفعه (محفظة + نقد)
     let newPaymentStatus = booking.paymentStatus;
@@ -166,7 +164,7 @@ export const confirmPayment = async (req, res) => {
       newPaymentStatus = "paid";
     } 
     // إذا كان إجمالي ما تم دفعه يغطي العربون (30%)
-    else if (totalWalletUsed >= requiredDeposit) {
+    else if (totalWalletUsed >= requiredDepositAmount) {
       newPaymentStatus = "verified";
     }
     // إذا تم دفع جزء ولكن لم يصل للعربون

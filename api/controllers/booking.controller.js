@@ -69,7 +69,8 @@ export const createBooking = async (req, res) => {
 
     const diffTime = end - start;
     const diffHours = diffTime / (1000 * 60 * 60);
-    const totalDays = diffHours <= 24 ? 1 : Math.ceil(diffHours / 24);
+    const GRACE_PERIOD = 2; // 2 hours grace period
+    const totalDays = diffHours <= 24 ? 1 : Math.ceil((diffHours - GRACE_PERIOD) / 24);
 
     const today = new Date();
     
@@ -335,10 +336,19 @@ export const cancelBooking = async (req, res) => {
     const settings = await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } });
     const refundPercentage = settings?.cancellationRefundPercentage ?? 0.5;
 
+    // حساب العربون الإجمالي المطلوب (عادة 30%)
+    const depositPercentage = settings?.depositPercentage ?? 0.3;
+    const totalRequiredDeposit = Math.floor(booking.totalPrice * depositPercentage);
+
     // إذا كان المستخدم قد دفع (عربون أو كامل المبلغ)
-    if (booking.paymentStatus === "paid" || booking.paymentStatus === "partial" || booking.paymentStatus === "verified") {
-      // استرداد النسبة المحددة من العربون
-      refundAmount = booking.deposit * refundPercentage;
+    if (booking.paymentStatus === "paid" || booking.paymentStatus === "verified") {
+      // استرداد النسبة المحددة من العربون الذي تم دفعه بالفعل
+      // نعتبر أن العربون المدفوع هو totalRequiredDeposit
+      refundAmount = totalRequiredDeposit * refundPercentage;
+    } else if (booking.paymentStatus === "partial") {
+       // في حالة الدفع الجزئي، نعتمد على ما تم خصمه من المحفظة حتى الآن كدليل
+       const amountPaid = booking.walletDiscount || 0;
+       refundAmount = amountPaid * refundPercentage;
     }
 
     const operations = [
