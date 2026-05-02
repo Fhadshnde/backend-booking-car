@@ -204,16 +204,36 @@ export const confirmPayment = async (req, res) => {
       });
     }
 
+    if (paymentMethod === "cash") {
+      // Notify Company about pending cash deposit
+      const companyUsers = await prisma.user.findMany({
+        where: { companyId: booking.companyId, role: "company" },
+        select: { id: true }
+      });
+      companyUsers.forEach(admin => {
+        notifyUser({
+          userId: admin.id,
+          title: "طلب دفع نقدي جديد 💵",
+          message: `المستخدم ${user.name} يرغب بالدفع نقداً للحجز #${booking.confirmationCode}. يرجى تأكيد استلام العربون يدوياً.`,
+          type: "booking",
+          relatedBooking: booking.id
+        });
+      });
+    }
+
     const updatedBooking = await prisma.booking.findUnique({ where: { id } });
 
     res.status(200).json({
       success: true,
       message: paymentMethod === "wallet"
         ? "تم الدفع من المحفظة وخصم المبلغ بنجاح"
-        : "تم تأكيد الدفع بنجاح",
+        : paymentMethod === "cash"
+          ? "تم استلام طلب الدفع النقدي. يرجى مراجعة المكتب لتسديد المبلغ وتأكيد الحجز."
+          : "تم تأكيد الدفع بنجاح",
       booking: updatedBooking,
       user: updatedUser,
-      transactionId
+      transactionId,
+      requiresVerification: paymentMethod === "cash"
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
