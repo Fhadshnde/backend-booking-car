@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { applyDiscountToCars } from "./car.controller.js";
 
 export const getAllBrands = async (req, res) => {
   try {
@@ -48,9 +49,11 @@ export const carInBrand = async (req, res) => {
       prisma.car.count({ where: { brandId } })
     ]);
 
+    const carsWithDiscount = await applyDiscountToCars(cars);
+
     res.status(200).json({
       success: true,
-      cars,
+      cars: carsWithDiscount,
       pagination: { 
         total, 
         page: parseInt(page), 
