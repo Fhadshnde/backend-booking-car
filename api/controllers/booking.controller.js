@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { notifyUser } from "../services/notification.service.js";
+import { calculateBookingBreakdown } from "../helpers/pricing.helper.js";
 
 export const createBooking = async (req, res) => {
   try {
@@ -43,11 +44,22 @@ export const createBooking = async (req, res) => {
 
     const start = new Date(startDate);
     const end = new Date(endDate);
+    const now = new Date();
+
+    // 1. الأساسيات: التأكد من أن التواريخ صالحة وفي المستقبل
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({ success: false, message: "تواريخ غير صالحة" });
+    }
+
+    if (start < new Date(now.getTime() - 5 * 60 * 1000)) { // السماح بـ 5 دقائق هامش
+      return res.status(400).json({ success: false, message: "تاريخ البداية يجب أن يكون في المستقبل" });
+    }
 
     if (end <= start) {
       return res.status(400).json({ success: false, message: "تاريخ الانتهاء يجب أن يكون بعد تاريخ البداية" });
     }
 
+    // 2. التحقق من تضارب الحجوزات
     const conflictingBookings = await prisma.booking.findFirst({
       where: {
         carId: parsedCarId,
@@ -67,97 +79,30 @@ export const createBooking = async (req, res) => {
       return res.status(400).json({ success: false, message: "السيارة غير متاحة في الفترة المحددة" });
     }
 
-    const diffTime = end - start;
-    const diffHours = diffTime / (1000 * 60 * 60);
-    const GRACE_PERIOD = 2; // 2 hours grace period
-    const totalDays = diffHours <= 24 ? 1 : Math.ceil((diffHours - GRACE_PERIOD) / 24);
-
-    const today = new Date();
-    
-    // Logic matching car.controller.js: Check for active Ads first
-    const activeAd = await prisma.ad.findFirst({
-      where: {
-        cars: { some: { id: car.id } },
-        isActive: true,
-        endDate: { gte: today }
-      }
+    // 3. حساب المبالغ باستخدام الهيلبر الموحد
+    const breakdown = await calculateBookingBreakdown({
+      car,
+      startDate: start,
+      endDate: end,
+      useInsurance: Boolean(useInsurance),
+      hasDriver: Boolean(hasDriver),
+      promoCodeId: promoCodeId ? Number(promoCodeId) : null,
+      pickupLocation,
+      walletAmount: Number(walletAmount || 0)
     });
 
-    let discountPercentage = 0;
-    if (activeAd) {
-      discountPercentage = activeAd.discountPercentage;
-    }
-
-    const originalPrice = car.pricePerDay;
-    let currentPrice = originalPrice;
-
-    if (discountPercentage > 0) {
-      currentPrice = originalPrice * (1 - discountPercentage / 100);
-    } else if (car.discountPrice > 0 && (!car.offerEndsAt || new Date(car.offerEndsAt) > today)) {
-      currentPrice = car.discountPrice;
-    }
-
-    const basePrice = totalDays * currentPrice;
-
-    const globalSettings = await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } });
-
-    let insurancePrice = 0;
-    if (useInsurance) {
-      insurancePrice = car.insurancePrice || (globalSettings ? globalSettings.insurancePrice : 0);
-    }
-
-    let driverPrice = 0;
-    if (hasDriver) {
-      const driverPricePerDay = (car.driverPricePerDay !== null && car.driverPricePerDay !== undefined) 
-        ? car.driverPricePerDay 
-        : (globalSettings?.defaultDriverPrice ?? 0);
-      driverPrice = totalDays * driverPricePerDay;
-    }
-
-    const deliveryFee = req.body.deliveryFee !== undefined ? Number(req.body.deliveryFee) : ((pickupLocation && pickupLocation !== "مكتب الشركة الرئيسي" && !hasDriver) ? (globalSettings?.deliveryFee || 0) : 0);
-    let totalPrice = basePrice + insurancePrice + driverPrice + deliveryFee;
-
-    let discountAmount = 0;
-    let promo = null;
-    if (promoCodeId) {
-      promo = await prisma.promoCode.findUnique({ where: { id: promoCodeId } });
-      if (promo && promo.isActive) {
-        if (promo.type === "percentage") {
-          discountAmount = (totalPrice * promo.value) / 100;
-          if (promo.maxDiscount && discountAmount > promo.maxDiscount) {
-            discountAmount = promo.maxDiscount;
-          }
-        } else {
-          discountAmount = promo.value;
-        }
-        totalPrice = Math.max(0, totalPrice - discountAmount);
-      }
-    }
-
-    const depositPercentage = globalSettings ? globalSettings.depositPercentage : 0.3;
-    const initialDepositAmount = Math.floor(totalPrice * depositPercentage);
-
-    let walletDiscount = 0;
-    if (walletAmount && walletAmount > 0) {
-      const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-      if (user.walletBalance >= walletAmount) {
-        walletDiscount = walletAmount;
-        // NOTE: We no longer subtract walletDiscount from totalPrice here 
-        // because totalPrice represents the trip cost before payments.
-      } else {
-        return res.status(400).json({ success: false, message: "رصيد المحفظة غير كافٍ" });
-      }
-    }
-
-    const depositAmount = Math.max(0, initialDepositAmount - walletDiscount);
-    
-    // Determine initial payment status
-    let initialPaymentStatus = "pending";
-    if (walletDiscount >= totalPrice) {
-      initialPaymentStatus = "paid";
-    } else if (walletDiscount >= initialDepositAmount) {
-      initialPaymentStatus = "verified"; // Covered deposit via wallet
-    }
+    const {
+      totalDays,
+      pricePerDay,
+      totalPrice,
+      insurancePrice,
+      driverPrice,
+      deliveryFee,
+      discountAmount,
+      walletDiscount,
+      remainingDeposit,
+      paymentStatus
+    } = breakdown;
 
     const generateConfirmationCode = () => {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789";
@@ -190,11 +135,11 @@ export const createBooking = async (req, res) => {
           startDate: start,
           endDate: end,
           totalDays,
-          pricePerDay: currentPrice,
+          pricePerDay,
           totalPrice,
-          deposit: depositAmount,
-          status: (initialPaymentStatus === "paid" || initialPaymentStatus === "verified") ? "confirmed" : "pending",
-          paymentStatus: initialPaymentStatus,
+          deposit: remainingDeposit,
+          status: (paymentStatus === "paid" || paymentStatus === "verified") ? "confirmed" : "pending",
+          paymentStatus,
           confirmationCode,
           pickupLocation: pickupLocation || "مكتب الشركة",
           dropoffLocation: dropoffLocation || "مكتب الشركة",
@@ -206,12 +151,10 @@ export const createBooking = async (req, res) => {
           insurance: Boolean(useInsurance),
           insurancePrice: insurancePrice,
           walletDiscount: walletDiscount,
-          hasDriver: hasDriver || false,
+          hasDriver: Boolean(hasDriver),
           driverPrice: driverPrice,
-          driverDailyHours: globalSettings?.driverDailyHours || 8,
-          driverOvertimePrice: globalSettings?.driverOvertimePrice || 0,
-          deliveryFee: (pickupLocation && pickupLocation !== "مكتب الشركة الرئيسي" && !hasDriver) ? (globalSettings?.deliveryFee || 0) : 0,
-          promoCodeId: promoCodeId,
+          deliveryFee: deliveryFee,
+          promoCodeId: promoCodeId ? Number(promoCodeId) : null,
           discountAmount: discountAmount,
         },
         include: {

@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { notifyUser } from "../services/notification.service.js";
+import { calculateBookingBreakdown } from "../helpers/pricing.helper.js";
 import crypto from "crypto";
 
 const generateTransactionId = () => {
@@ -33,9 +34,18 @@ export const createPaymentIntent = async (req, res) => {
       return res.status(403).json({ success: false, message: "غير مصرح لك بتنفيذ هذا الإجراء" });
     }
 
-    const settings = await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } });
-    const depositPercentage = settings?.depositPercentage || 0.3;
-    const requiredDeposit = Math.floor(booking.totalPrice * depositPercentage);
+    const breakdown = await calculateBookingBreakdown({
+      car: booking.car,
+      startDate: booking.startDate,
+      endDate: booking.endDate,
+      useInsurance: booking.insurance,
+      hasDriver: booking.hasDriver,
+      promoCodeId: booking.promoCodeId,
+      pickupLocation: booking.pickupLocation,
+      walletAmount: booking.walletDiscount, // Current wallet usage
+    });
+
+    const { totalPrice, remainingDeposit, initialDepositAmount } = breakdown;
 
     let amount = 0;
     let description = "";
@@ -44,15 +54,15 @@ export const createPaymentIntent = async (req, res) => {
       if (booking.paymentStatus === "paid" || booking.paymentStatus === "verified") {
         return res.status(400).json({ success: false, message: "تم دفع العربون مسبقاً" });
       }
-      amount = booking.deposit;
+      amount = booking.deposit; // This is the remaining deposit saved in DB
       description = `دفع عربون حجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else if (paymentType === "remaining" || paymentType === "full") {
-      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "paid") ? requiredDeposit : 0;
-      amount = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
+      const alreadyPaid = (booking.paymentStatus === "verified" || booking.paymentStatus === "paid") ? initialDepositAmount : 0;
+      amount = Math.max(0, totalPrice - booking.walletDiscount - alreadyPaid);
       description = paymentType === "remaining" ? `دفع المبلغ المتبقي لحجز السيارة ${booking.car.brand.name} ${booking.car.model}` : `دفع كامل مبلغ حجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else if (paymentType === "partial_wallet") {
-      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "paid") ? requiredDeposit : 0;
-      amount = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
+      // This case handles additional wallet payments
+      amount = Math.max(0, totalPrice - booking.walletDiscount);
       description = `دفع جزء من المبلغ لحجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else {
       return res.status(400).json({ success: false, message: "نوع الدفع غير صالح" });
@@ -114,32 +124,40 @@ export const confirmPayment = async (req, res) => {
 
     const booking = await prisma.booking.findUnique({
       where: { id },
-      include: { user: true }
+      include: { 
+        user: true,
+        car: { include: { brand: true } } 
+      }
     });
 
     if (!booking) {
       return res.status(404).json({ success: false, message: "الحجز غير موجود" });
     }
 
-    // حساب المبلغ المطلوب دفعه قبل الخصم الجديد
-    const settings = await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } });
-    const depositPercentage = settings?.depositPercentage || 0.3;
-    const requiredDeposit = Math.floor(booking.totalPrice * depositPercentage);
+    const breakdown = await calculateBookingBreakdown({
+      car: booking.car,
+      startDate: booking.startDate,
+      endDate: booking.endDate,
+      useInsurance: booking.insurance,
+      hasDriver: booking.hasDriver,
+      promoCodeId: booking.promoCodeId,
+      pickupLocation: booking.pickupLocation,
+      walletAmount: booking.walletDiscount + walletAmount, // الإجمالي بعد الخصم الجديد
+    });
 
+    const { totalPrice, initialDepositAmount, paymentStatus: newPaymentStatus, walletDiscount: totalWalletUsed } = breakdown;
+
+    // حساب المبلغ المتبقي بناءً على نوع الدفع المطلوب حالياً
     let totalDue = 0;
     if (paymentType === "deposit") {
       totalDue = booking.deposit;
     } else if (paymentType === "remaining" || paymentType === "full") {
-      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "paid") ? requiredDeposit : 0;
-      totalDue = Math.max(0, booking.totalPrice - (booking.walletDiscount || 0) - alreadyPaidDeposit);
+      const alreadyPaidDeposit = (booking.paymentStatus === "verified" || booking.paymentStatus === "paid") ? initialDepositAmount : 0;
+      totalDue = Math.max(0, totalPrice - booking.walletDiscount - alreadyPaidDeposit);
     }
 
-    // المبلغ المطلوب دفعه بالوسيلة الأخرى (بطاقة/كاش) بعد خصم المحفظة الجديد
-    const amountToPay = Math.max(0, totalDue - walletAmount);
-
-    // التحقق من كفاية رصيد المحفظة
     const user = await prisma.user.findUnique({ where: { id: booking.userId } });
-    const requiredFromWallet = paymentMethod === "wallet" ? totalDue : walletAmount;
+    const requiredFromWallet = walletAmount; 
 
     if (requiredFromWallet > 0) {
       if (!user || user.walletBalance < requiredFromWallet) {
@@ -152,34 +170,12 @@ export const confirmPayment = async (req, res) => {
 
     const transactionId = generateTransactionId();
     
-    // حساب المبالغ الكلية بعد هذه العملية
-    const totalWalletUsed = (booking.walletDiscount || 0) + requiredFromWallet;
-    const requiredDepositAmount = requiredDeposit;
-    
-    // تحديد حالة الدفع الجديدة بناءً على إجمالي ما تم دفعه (محفظة + نقد)
-    let newPaymentStatus = booking.paymentStatus;
-    
-    // إذا كان إجمالي ما تم دفعه يغطي أو يتجاوز السعر الكلي
-    if (totalWalletUsed >= booking.totalPrice) {
-      newPaymentStatus = "paid";
-    } 
-    // إذا كان إجمالي ما تم دفعه يغطي العربون (30%)
-    else if (totalWalletUsed >= requiredDepositAmount) {
-      newPaymentStatus = "verified";
-    }
-    // إذا تم دفع جزء ولكن لم يصل للعربون
-    else if (totalWalletUsed > 0) {
-      newPaymentStatus = "pending"; // يبقى قيد الانتظار حتى اكتمال العربون
-    }
-
     const dataToUpdate = {
       paymentStatus: newPaymentStatus,
       walletDiscount: { increment: requiredFromWallet },
-      // نُحدّث الـ deposit (المتبقي للعربون) بطرح ما تم دفعه الآن منه
-      deposit: Math.max(0, (booking.deposit || 0) - requiredFromWallet)
+      deposit: Math.max(0, (booking.deposit || 0) - (paymentMethod === "wallet" ? requiredFromWallet : 0))
     };
 
-    // إذا اكتمل العربون أو المبلغ بالكامل، نؤكد الحجز
     if (newPaymentStatus === "verified" || newPaymentStatus === "paid") {
       dataToUpdate.status = "confirmed";
     }
