@@ -47,7 +47,7 @@ export const getCarCurrentPrice = async (car, date = new Date()) => {
 
   if (discountPercentage > 0) {
     currentPrice = originalPrice * (1 - discountPercentage / 100);
-  } else if (car.discountPrice > 0 && (!car.offerEndsAt || new Date(car.offerEndsAt) > today)) {
+  } else if (car.discountPrice > 0 && car.discountPrice < originalPrice && (!car.offerEndsAt || new Date(car.offerEndsAt) > today)) {
     currentPrice = car.discountPrice;
   }
 

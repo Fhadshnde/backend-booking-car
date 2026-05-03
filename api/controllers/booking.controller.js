@@ -408,11 +408,27 @@ export const updateBooking = async (req, res) => {
     if (booking.userId !== req.user.id) return res.status(403).json({ success: false, message: "غير مصرح لك" });
     if (booking.status !== "pending") return res.status(400).json({ success: false, message: "لا يمكن تعديل الحجز بعد تأكيده" });
 
+    const start = startDate ? new Date(startDate) : new Date(booking.startDate);
+    const end = endDate ? new Date(endDate) : new Date(booking.endDate);
+    const now = new Date();
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({ success: false, message: "تواريخ غير صالحة" });
+    }
+
+    if (startDate && start < new Date(now.getTime() - 5 * 60 * 1000)) {
+      return res.status(400).json({ success: false, message: "تاريخ البداية يجب أن يكون في المستقبل" });
+    }
+
+    if (end <= start) {
+      return res.status(400).json({ success: false, message: "تاريخ الانتهاء يجب أن يكون بعد تاريخ البداية" });
+    }
+
     const updatedBooking = await prisma.booking.update({
       where: { id: Number(id) },
       data: {
-        startDate: startDate ? new Date(startDate) : booking.startDate,
-        endDate: endDate ? new Date(endDate) : booking.endDate,
+        startDate: start,
+        endDate: end,
         pickupLocation: pickupLocation || booking.pickupLocation,
         dropoffLocation: dropoffLocation || booking.dropoffLocation
       }
