@@ -71,7 +71,8 @@ export const calculateBookingBreakdown = async ({
   promoCodeId,
   pickupLocation,
   walletAmount = 0,
-  settings = null
+  settings = null,
+  userId = null
 }) => {
   const globalSettings = settings || await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } });
   
@@ -120,8 +121,30 @@ export const calculateBookingBreakdown = async ({
 
   const totalPrice = Math.max(0, totalPriceBeforePromo - discountAmount);
 
-  // Deposit
-  const depositPercentage = globalSettings ? globalSettings.depositPercentage : 0.3;
+  // Deposit Logic (Tiered based on trust)
+  let depositPercentage = globalSettings ? globalSettings.depositPercentage : 0.3;
+  
+  if (userId) {
+    const user = await prisma.user.findUnique({ 
+      where: { id: userId },
+      include: { 
+        _count: { 
+          select: { 
+            bookings: { where: { status: "completed" } } 
+          } 
+        } 
+      }
+    });
+
+    if (user && user.identityStatus === "verified") {
+      if (user._count.bookings >= 3) {
+        depositPercentage = 0; // "Elite" status: 0% deposit
+      } else {
+        depositPercentage = 0.15; // "Verified" status: 15% deposit instead of 30%
+      }
+    }
+  }
+
   const initialDepositAmount = Math.floor(totalPrice * depositPercentage);
   
   const walletDiscount = Math.min(walletAmount, totalPrice);

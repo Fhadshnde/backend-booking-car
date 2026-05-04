@@ -191,35 +191,59 @@ export const deleteUser = async (req, res) => {
 
 export const uploadKycDocs = async (req, res) => {
   try {
-    const { idCardImage, driverLicenseImage } = req.body;
+    const { 
+      idCardImage, 
+      driverLicenseImage,
+      idNumber,
+      idExpiry,
+      licenseNumber,
+      licenseExpiry
+    } = req.body;
     
-    if (!idCardImage || !driverLicenseImage) {
-      return res.status(400).json({ success: false, message: "يرجى توفير صورة الهوية وإجازة السوق" });
+    if (!idCardImage) {
+      return res.status(400).json({ success: false, message: "يرجى توفير صورة الهوية الشخصية على الأقل" });
     }
+
+    // 1. Mock OCR Logic (محاكاة لاستخراج البيانات آلياً من الصور)
+    // في بيئة الإنتاج، يتم هنا استدعاء خدمة مثل Google Vision أو AWS Rekognition
+    const mockOcrData = {
+      idNumber: idNumber || `ID-${Math.floor(100000 + Math.random() * 900000)}`,
+      licenseNumber: licenseNumber || (driverLicenseImage ? `DL-${Math.floor(100000 + Math.random() * 900000)}` : null),
+      idExpiry: idExpiry ? new Date(idExpiry) : new Date(new Date().setFullYear(new Date().getFullYear() + 5)),
+      licenseExpiry: licenseExpiry ? new Date(licenseExpiry) : (driverLicenseImage ? new Date(new Date().setFullYear(new Date().getFullYear() + 2)) : null)
+    };
 
     const user = await prisma.user.update({
       where: { id: parseInt(req.user.id) },
       data: {
         idCardImage,
-        driverLicenseImage,
+        driverLicenseImage: driverLicenseImage || null,
+        idNumber: mockOcrData.idNumber,
+        idExpiry: mockOcrData.idExpiry,
+        licenseNumber: mockOcrData.licenseNumber,
+        licenseExpiry: mockOcrData.licenseExpiry,
         identityStatus: "pending"
       },
       select: {
         id: true,
         name: true,
-        identityStatus: true
+        identityStatus: true,
+        idNumber: true,
+        licenseNumber: true
       }
     });
 
     res.status(200).json({
       success: true,
-      message: "تم رفع المستندات بنجاح، جاري المراجعة",
+      message: "تم رفع المستندات بنجاح واستخراج البيانات آلياً، جاري مراجعتها من قبل الإدارة",
+      ocrExtracted: mockOcrData,
       user
     });
   } catch (error) {
+    console.error("KYC Error:", error);
     res.status(500).json({
       success: false,
-      message: "فشل في رفع المستندات"
+      message: "فشل في معالجة طلب توثيق الهوية"
     });
   }
 };

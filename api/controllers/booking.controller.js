@@ -16,9 +16,14 @@ export const createBooking = async (req, res) => {
       pickupLng,
       dropoffLat,
       dropoffLng,
-      driverLicense,
+      driverLicense, // Still here for backward compatibility
       hasDriver,
       promoCodeId,
+      digitalSignature,
+      secondDriverName,
+      secondDriverIdNumber,
+      secondDriverLicenseNumber,
+      secondDriverLicenseImage,
     } = req.body;
 
     if (!carId) {
@@ -59,11 +64,64 @@ export const createBooking = async (req, res) => {
       return res.status(400).json({ success: false, message: "تاريخ الانتهاء يجب أن يكون بعد تاريخ البداية" });
     }
 
-    // 2. التحقق من تضارب الحجوزات
+    // 2. نظام التحقق المشروط (KYC Logic) & القائمة السوداء
+    const user = await prisma.user.findUnique({ 
+      where: { id: req.user.id },
+      include: { bookings: { select: { id: true }, take: 1 } }
+    });
+
+    // أ. فحص الحظر المباشر على الحساب
+    if (user.isBlacklisted) {
+      return res.status(403).json({ 
+        success: false, 
+        message: `عذراً، لا يمكنك الحجز حالياً. السبب: ${user.blacklistReason || "مخالفة الشروط والأحكام"}` 
+      });
+    }
+
+    // ب. فحص رقم الهوية في القائمة السوداء العامة
+    if (user.idNumber) {
+      const blacklisted = await prisma.blacklist.findUnique({ where: { idNumber: user.idNumber } });
+      if (blacklisted) {
+        return res.status(403).json({ 
+          success: false, 
+          message: `عذراً، تم حظر رقم الهوية هذا من النظام. السبب: ${blacklisted.reason || "غير محدد"}` 
+        });
+      }
+    }
+
+    if (hasDriver) {
+      // تأجير بسائق: الهوية فقط
+      if (user.identityStatus !== "verified") {
+        return res.status(400).json({ 
+          success: false, 
+          message: "يرجى استكمال وثائق الهوية الشخصية لتتمكن من الحجز مع سائق",
+          requireKYC: true 
+        });
+      }
+    } else {
+      // قيادة ذاتية: هوية + إجازة سوق
+      if (user.identityStatus !== "verified" || !user.licenseNumber) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "يرجى استكمال وثائق الهوية وإجازة السوق لتتمكن من حجز سيارة للقيادة الذاتية",
+          requireKYC: true 
+        });
+      }
+
+      // التحقق من صلاحية الإجازة خلال فترة الحجز
+      if (user.licenseExpiry && new Date(user.licenseExpiry) < end) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "عذراً، إجازة السوق الخاصة بك ستنتهي خلال فترة الحجز. يرجى تحديثها أولاً." 
+        });
+      }
+    }
+
+    // 3. التحقق من تضارب الحجوزات
     const conflictingBookings = await prisma.booking.findFirst({
       where: {
         carId: parsedCarId,
-        status: { in: ["pending", "pending_verification", "confirmed", "on_trip"] },
+        status: { in: ["pending", "pending_verification", "confirmed", "on_trip", "pending_document_review"] },
         OR: [
           {
             AND: [
@@ -79,7 +137,7 @@ export const createBooking = async (req, res) => {
       return res.status(400).json({ success: false, message: "السيارة غير متاحة في الفترة المحددة" });
     }
 
-    // 3. حساب المبالغ باستخدام الهيلبر الموحد
+    // 4. حساب المبالغ باستخدام الهيلبر الموحد
     const breakdown = await calculateBookingBreakdown({
       car,
       startDate: start,
@@ -88,7 +146,8 @@ export const createBooking = async (req, res) => {
       hasDriver: Boolean(hasDriver),
       promoCodeId: promoCodeId ? Number(promoCodeId) : null,
       pickupLocation,
-      walletAmount: Number(walletAmount || 0)
+      walletAmount: Number(walletAmount || 0),
+      userId: req.user.id
     });
 
     const {
@@ -126,7 +185,16 @@ export const createBooking = async (req, res) => {
         }
       }
 
-      // 1. Create the booking
+      // 1. Determine final status
+      let finalStatus = "pending";
+      // If user documents are pending OR it's their first booking, set to document review
+      if (user.identityStatus === "pending" || user.bookings.length === 0) {
+        finalStatus = "pending_document_review";
+      } else if (paymentStatus === "paid" || paymentStatus === "verified") {
+        finalStatus = "confirmed";
+      }
+
+      // 2. Create the booking
       const newBooking = await tx.booking.create({
         data: {
           userId: req.user.id,
@@ -138,7 +206,7 @@ export const createBooking = async (req, res) => {
           pricePerDay,
           totalPrice,
           deposit: remainingDeposit,
-          status: (paymentStatus === "paid" || paymentStatus === "verified") ? "confirmed" : "pending",
+          status: finalStatus,
           paymentStatus,
           confirmationCode,
           pickupLocation: pickupLocation || "مكتب الشركة",
@@ -156,6 +224,11 @@ export const createBooking = async (req, res) => {
           deliveryFee: deliveryFee,
           promoCodeId: promoCodeId ? Number(promoCodeId) : null,
           discountAmount: discountAmount,
+          digitalSignature: digitalSignature || null,
+          secondDriverName: secondDriverName || null,
+          secondDriverIdNumber: secondDriverIdNumber || null,
+          secondDriverLicenseNumber: secondDriverLicenseNumber || null,
+          secondDriverLicenseImage: secondDriverLicenseImage || null,
         },
         include: {
           user: { select: { name: true, phone: true } },
@@ -344,7 +417,7 @@ export const getBookingDetails = async (req, res) => {
       include: {
         car: true,
         company: true,
-        user: { select: { name: true, phone: true, profileImage: true } }
+        user: { select: { name: true, phone: true, profileImage: true, idNumber: true, licenseNumber: true, identityStatus: true } }
       }
     });
     if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });

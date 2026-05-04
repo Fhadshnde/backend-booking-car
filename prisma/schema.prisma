@@ -25,6 +25,12 @@ model User {
   identityStatus     String               @default("unverified")
   idCardImage        String?
   driverLicenseImage String?
+  idNumber           String?
+  idExpiry           DateTime?
+  licenseNumber      String?
+  licenseExpiry      DateTime?
+  isBlacklisted      Boolean              @default(false)
+  blacklistReason    String?
   fcmToken           String?
   googleId           String?              @unique
   appleId            String?              @unique
@@ -213,6 +219,11 @@ model Booking {
   deliveryFee                    Float          @default(0)
   currentLat                     Float?
   currentLng                     Float?
+  digitalSignature               String?
+  secondDriverName               String?
+  secondDriverIdNumber           String?
+  secondDriverLicenseNumber      String?
+  secondDriverLicenseImage       String?
   pickupLat                      Float?
   pickupLng                      Float?
   dropoffLat                     Float?
@@ -395,4 +406,11 @@ model DamageReport {
   booking       Booking  @relation(fields: [bookingId], references: [id])
   car           Car      @relation(fields: [carId], references: [id])
   company       Company  @relation(fields: [companyId], references: [id])
+}
+
+model Blacklist {
+  id        Int      @id @default(autoincrement())
+  idNumber  String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
 }
