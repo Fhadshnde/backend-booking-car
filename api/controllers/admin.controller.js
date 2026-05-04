@@ -473,7 +473,6 @@ export const getPendingKyc = async (req, res) => {
       select: {
         id: true,
         name: true,
-        email: true,
         phone: true,
         idNumber: true,
         idExpiry: true,
@@ -554,6 +553,49 @@ export const rejectKyc = async (req, res) => {
     });
 
     res.status(200).json({ success: true, message: "User KYC rejected", user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+export const approveKycByPhone = async (req, res) => {
+  try {
+    const { phone } = req.params;
+
+    const user = await prisma.user.findUnique({ where: { phone } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        identityStatus: "verified",
+        updatedAt: new Date()
+      }
+    });
+
+    notifyUser({
+      userId: user.id,
+      title: "تم توثيق هويتك بنجاح! ✅",
+      message: "تهانينا، تم قبول مستنداتك وتوثيق حسابك. يمكنك الآن الحجز بكل سهولة.",
+      type: "general"
+    });
+
+    // Check if user has any bookings waiting for this verification
+    const pendingBookings = await prisma.booking.findMany({
+      where: { userId: user.id, status: "pending_document_review" }
+    });
+
+    for (const booking of pendingBookings) {
+      if (booking.paymentStatus === "paid" || booking.paymentStatus === "verified") {
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: { status: "confirmed" }
+        });
+      }
+    }
+
+    res.status(200).json({ success: true, message: "User KYC approved via phone", user: updatedUser });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

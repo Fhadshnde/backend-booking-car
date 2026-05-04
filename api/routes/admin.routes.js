@@ -15,7 +15,8 @@ import {
   rejectRefund,
   getPendingKyc,
   approveKyc,
-  rejectKyc
+  rejectKyc,
+  approveKycByPhone
 } from "../controllers/admin.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
 
@@ -47,5 +48,6 @@ router.put("/bookings/:bookingId/refund/reject", rejectRefund);
 router.get("/kyc/pending", getPendingKyc);
 router.put("/kyc/:userId/approve", approveKyc);
 router.put("/kyc/:userId/reject", rejectKyc);
+router.put("/kyc/phone/:phone/approve", approveKycByPhone);
 
 export default router;
