@@ -79,7 +79,7 @@ export const calculateBookingBreakdown = async ({
   const totalDays = calculateTotalDays(startDate, endDate);
   const pricing = await getCarCurrentPrice(car, startDate);
   const currentPrice = pricing.currentPrice;
-  
+  console.log(`[Pricing] Calculating: days=${totalDays}, base=${currentPrice}`);
   const basePrice = totalDays * currentPrice;
 
   // Insurance

@@ -35,6 +35,8 @@ export const createBooking = async (req, res) => {
       return res.status(400).json({ success: false, message: "معرف السيارة غير صالح" });
     }
 
+    console.log("🚀 Starting Booking Creation...");
+    // 1. التحقق من وجود السيارة والتأريخ
     const car = await prisma.car.findUnique({
       where: { id: parsedCarId }
     });
@@ -64,6 +66,7 @@ export const createBooking = async (req, res) => {
       return res.status(400).json({ success: false, message: "تاريخ الانتهاء يجب أن يكون بعد تاريخ البداية" });
     }
 
+    console.log("🛡️ Checking security for user:", req.user.id);
     // 2. نظام التحقق المشروط (KYC Logic) & القائمة السوداء
     const [user, previousBookingsCount] = await Promise.all([
       prisma.user.findUnique({ where: { id: req.user.id } }),
@@ -152,6 +155,7 @@ export const createBooking = async (req, res) => {
       promo = await prisma.promoCode.findUnique({ where: { id: Number(promoCodeId) } });
     }
 
+    console.log("💰 Calculating breakdown for car:", car.id);
     const breakdown = await calculateBookingBreakdown({
       car,
       startDate: start,
@@ -187,6 +191,7 @@ export const createBooking = async (req, res) => {
     };
 
     // Execute everything in a transaction for atomicity
+    console.log("📝 Executing transaction with status:", finalStatus);
     const result = await prisma.$transaction(async (tx) => {
       let confirmationCode = generateConfirmationCode();
       let isUnique = false;
