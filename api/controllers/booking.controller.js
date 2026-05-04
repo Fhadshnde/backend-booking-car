@@ -65,14 +65,15 @@ export const createBooking = async (req, res) => {
     }
 
     // 2. نظام التحقق المشروط (KYC Logic) & القائمة السوداء
-    const user = await prisma.user.findUnique({ 
-      where: { id: req.user.id },
-      include: { 
-        _count: { 
-          select: { bookings: { where: { status: { in: ["confirmed", "completed", "on_trip"] } } } } 
+    const [user, previousBookingsCount] = await Promise.all([
+      prisma.user.findUnique({ where: { id: req.user.id } }),
+      prisma.booking.count({ 
+        where: { 
+          userId: req.user.id, 
+          status: { in: ["confirmed", "completed", "on_trip"] } 
         } 
-      }
-    });
+      })
+    ]);
 
     if (!user) {
       return res.status(404).json({ success: false, message: "المستخدم غير موجود" });
@@ -201,7 +202,7 @@ export const createBooking = async (req, res) => {
       // 1. Determine final status
       let finalStatus = "pending";
       // If user documents are pending OR it's their first booking, set to document review
-      if (user.identityStatus === "pending" || user._count.bookings === 0) {
+      if (user.identityStatus === "pending" || previousBookingsCount === 0) {
         finalStatus = "pending_document_review";
       } else if (paymentStatus === "paid" || paymentStatus === "verified") {
         finalStatus = "confirmed";
