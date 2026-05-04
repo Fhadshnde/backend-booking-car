@@ -12,7 +12,10 @@ import {
   getComplaints, 
   respondToComplaint,
   approveRefund,
-  rejectRefund
+  rejectRefund,
+  getPendingKyc,
+  approveKyc,
+  rejectKyc
 } from "../controllers/admin.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
 
@@ -39,5 +42,10 @@ router.put("/complaints/:complaintId/respond", respondToComplaint);
 
 router.put("/bookings/:bookingId/refund/approve", approveRefund);
 router.put("/bookings/:bookingId/refund/reject", rejectRefund);
+
+// KYC Management
+router.get("/kyc/pending", getPendingKyc);
+router.put("/kyc/:userId/approve", approveKyc);
+router.put("/kyc/:userId/reject", rejectKyc);
 
 export default router;

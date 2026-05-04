@@ -463,3 +463,98 @@ export const respondToComplaint = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// --- KYC Management ---
+
+export const getPendingKyc = async (req, res) => {
+  try {
+    const pendingUsers = await prisma.user.findMany({
+      where: { identityStatus: "pending" },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        idNumber: true,
+        idExpiry: true,
+        idCardImage: true,
+        licenseNumber: true,
+        licenseExpiry: true,
+        driverLicenseImage: true,
+        createdAt: true
+      }
+    });
+
+    res.status(200).json({ success: true, pendingUsers });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const approveKyc = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const id = parseInt(userId);
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: {
+        identityStatus: "verified", // or "approved"
+        updatedAt: new Date()
+      }
+    });
+
+    notifyUser({
+      userId: id,
+      title: "تم توثيق هويتك بنجاح! ✅",
+      message: "تهانينا، تم قبول مستنداتك وتوثيق حسابك. يمكنك الآن الحجز بكل سهولة.",
+      type: "general"
+    });
+
+    // Check if user has any bookings waiting for this verification
+    const pendingBookings = await prisma.booking.findMany({
+      where: { userId: id, status: "pending_document_review" }
+    });
+
+    // Automatically confirm bookings that were pending review if they are paid
+    for (const booking of pendingBookings) {
+      if (booking.paymentStatus === "paid" || booking.paymentStatus === "verified") {
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: { status: "confirmed" }
+        });
+      }
+    }
+
+    res.status(200).json({ success: true, message: "User KYC approved", user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const rejectKyc = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { reason } = req.body;
+    const id = parseInt(userId);
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: {
+        identityStatus: "rejected",
+        updatedAt: new Date()
+      }
+    });
+
+    notifyUser({
+      userId: id,
+      title: "تم رفض مستندات التوثيق ❌",
+      message: `نعتذر، لم يتم قبول مستنداتك. السبب: ${reason || "يرجى إعادة رفع صور واضحة"}.`,
+      type: "general"
+    });
+
+    res.status(200).json({ success: true, message: "User KYC rejected", user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
