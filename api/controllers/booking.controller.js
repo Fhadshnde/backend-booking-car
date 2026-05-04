@@ -227,6 +227,7 @@ export const createBooking = async (req, res) => {
           deposit: remainingDeposit,
           status: finalStatus,
           paymentStatus,
+          paymentMethod: walletDiscount >= totalPrice ? "wallet" : "cash",
           confirmationCode,
           pickupLocation: pickupLocation || "مكتب الشركة",
           dropoffLocation: dropoffLocation || "مكتب الشركة",
@@ -453,9 +454,11 @@ export const getBookingDetails = async (req, res) => {
 
 export const getBookings = async (req, res) => {
   try {
-    const { page = 1, limit = 10, status } = req.query;
+    const { page = 1, limit = 10, status, paymentMethod } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
-    let where = status ? { status } : {};
+    let where = {};
+    if (status) where.status = status;
+    if (paymentMethod) where.paymentMethod = paymentMethod;
     if (req.user.role === "company") where.companyId = req.user.companyId;
 
     const [bookings, total] = await Promise.all([
@@ -539,26 +542,37 @@ export const updateBooking = async (req, res) => {
 export const confirmBooking = async (req, res) => {
   try {
     const { id } = req.params;
+    const { paymentReceived = false } = req.body; // خيار لتأكيد استلام المبلغ نقداً
+    
     const booking = await prisma.booking.findUnique({ where: { id: Number(id) } });
     if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });
-    if (req.user.role === "company" && booking.companyId !== req.user.companyId) return res.status(403).json({ success: false, message: "غير مصرح لك" });
+    
+    // فحص الصلاحيات
+    if (req.user.role === "company" && booking.companyId !== req.user.companyId) {
+      return res.status(403).json({ success: false, message: "غير مصرح لك بتأكيد هذا الحجز" });
+    }
 
     const updated = await prisma.booking.update({
       where: { id: Number(id) },
-      data: { status: "confirmed" },
+      data: { 
+        status: "confirmed",
+        paymentStatus: paymentReceived ? "verified" : booking.paymentStatus,
+        updatedAt: new Date()
+      },
       include: { user: true, car: true, company: true }
     });
-    res.status(200).json({ success: true, booking: updated });
 
     // Notify User
     notifyUser({
       userId: updated.userId,
       title: "تم تأكيد حجزك! ✅",
-      message: `مبروك! تم تأكيد حجزك للسيارة ${updated.car.model}. يمكنك الآن متابعة تفاصيل الرحلة.`,
+      message: `مبروك! تم تأكيد حجزك للسيارة ${updated.car.model}. ${paymentReceived ? "تم تأكيد استلام العربون نقداً." : ""}`,
       type: "booking",
       relatedBooking: updated.id,
       relatedCompany: updated.companyId
     });
+
+    res.status(200).json({ success: true, message: "تم تأكيد الحجز بنجاح", booking: updated });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

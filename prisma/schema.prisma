@@ -200,6 +200,7 @@ model Booking {
   deposit                        Float          @default(0)
   driverLicense                  String?
   dropoffLocation                String
+  paymentMethod                  String         @default("cash")
   paymentStatus                  String         @default("pending")
   pickupLocation                 String
   pricePerDay                    Float
