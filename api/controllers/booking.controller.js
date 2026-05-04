@@ -296,7 +296,12 @@ export const createBooking = async (req, res) => {
       });
     });
   } catch (error) {
-    console.error("Booking Creation Error:", error);
+    console.error("❌ Booking Creation Error Details:", {
+      message: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+      body: req.body
+    });
     res.status(500).json({ success: false, message: error.message || "حدث خطأ أثناء إتمام الحجز" });
   }
 };
