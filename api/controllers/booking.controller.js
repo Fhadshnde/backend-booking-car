@@ -138,6 +138,11 @@ export const createBooking = async (req, res) => {
     }
 
     // 4. حساب المبالغ باستخدام الهيلبر الموحد
+    let promo = null;
+    if (promoCodeId) {
+      promo = await prisma.promoCode.findUnique({ where: { id: Number(promoCodeId) } });
+    }
+
     const breakdown = await calculateBookingBreakdown({
       car,
       startDate: start,
