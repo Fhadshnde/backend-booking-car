@@ -190,6 +190,15 @@ export const createBooking = async (req, res) => {
       return code;
     };
 
+    // 1. Determine final status
+    let finalStatus = "pending";
+    // If user documents are pending OR it's their first booking, set to document review
+    if (user.identityStatus === "pending" || previousBookingsCount === 0) {
+      finalStatus = "pending_document_review";
+    } else if (paymentStatus === "paid" || paymentStatus === "verified") {
+      finalStatus = "confirmed";
+    }
+
     // Execute everything in a transaction for atomicity
     console.log("📝 Executing transaction with status:", finalStatus);
     const result = await prisma.$transaction(async (tx) => {
@@ -202,15 +211,6 @@ export const createBooking = async (req, res) => {
         } else {
           confirmationCode = generateConfirmationCode();
         }
-      }
-
-      // 1. Determine final status
-      let finalStatus = "pending";
-      // If user documents are pending OR it's their first booking, set to document review
-      if (user.identityStatus === "pending" || previousBookingsCount === 0) {
-        finalStatus = "pending_document_review";
-      } else if (paymentStatus === "paid" || paymentStatus === "verified") {
-        finalStatus = "confirmed";
       }
 
       // 2. Create the booking
