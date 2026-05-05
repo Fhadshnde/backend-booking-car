@@ -644,3 +644,63 @@ export const manualWalletTransaction = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * إنشاء شركة جديدة يدوياً من قبل الأدمن
+ */
+export const createCompany = async (req, res) => {
+  try {
+    const { name, address, city, logo, phone, licenseNumber, description } = req.body;
+
+    const company = await prisma.company.create({
+      data: {
+        name,
+        address,
+        city,
+        logo,
+        phone,
+        licenseNumber,
+        description,
+        isApproved: true
+      }
+    });
+
+    res.status(201).json({ success: true, message: "تم إنشاء الشركة بنجاح", company });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * تحديث بيانات شركة
+ */
+export const updateCompany = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const company = await prisma.company.update({
+      where: { id: parseInt(id) },
+      data: updateData
+    });
+
+    res.status(200).json({ success: true, message: "تم تحديث البيانات بنجاح", company });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * حذف شركة
+ */
+export const deleteCompany = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.company.delete({
+      where: { id: parseInt(id) }
+    });
+    res.status(200).json({ success: true, message: "تم حذف الشركة بنجاح" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "لا يمكن حذف الشركة لوجود بيانات مرتبطة بها" });
+  }
+};

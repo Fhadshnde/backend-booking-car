@@ -17,7 +17,10 @@ import {
   approveKyc,
   rejectKyc,
   approveKycByPhone,
-  manualWalletTransaction
+  manualWalletTransaction,
+  createCompany,
+  updateCompany,
+  deleteCompany
 } from "../controllers/admin.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
 
@@ -31,6 +34,9 @@ router.put("/users/:userId/toggle-status", toggleUserStatus);
 router.put("/users/:userId/manual-wallet", manualWalletTransaction);
 
 router.get("/companies/pending", getPendingCompanies);
+router.post("/companies", createCompany);
+router.put("/companies/:id", updateCompany);
+router.delete("/companies/:id", deleteCompany);
 router.put("/companies/:companyId/approve", approveCompany);
 router.put("/companies/:companyId/reject", rejectCompany);
 
