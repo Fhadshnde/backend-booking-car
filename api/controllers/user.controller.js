@@ -78,6 +78,7 @@ export const getUsers = async (req, res) => {
           role: true,
           isActive: true,
           walletBalance: true,
+          identityStatus: true,
           createdAt: true
         }
       }),
@@ -118,6 +119,9 @@ export const getUser = async (req, res) => {
         city: true,
         country: true,
         dateOfBirth: true,
+        identityStatus: true,
+        idCardImage: true,
+        driverLicenseImage: true,
         createdAt: true,
         companyId: true
       }
