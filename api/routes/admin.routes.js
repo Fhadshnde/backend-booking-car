@@ -16,7 +16,8 @@ import {
   getPendingKyc,
   approveKyc,
   rejectKyc,
-  approveKycByPhone
+  approveKycByPhone,
+  manualWalletTransaction
 } from "../controllers/admin.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
 
@@ -27,6 +28,7 @@ router.use(protect, restrictTo("admin"));
 router.get("/dashboard", getAdminDashboard);
 
 router.put("/users/:userId/toggle-status", toggleUserStatus);
+router.put("/users/:userId/manual-wallet", manualWalletTransaction);
 
 router.get("/companies/pending", getPendingCompanies);
 router.put("/companies/:companyId/approve", approveCompany);

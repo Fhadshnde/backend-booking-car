@@ -613,3 +613,34 @@ export const approveKycByPhone = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * إدارة رصيد المحفظة يدوياً من قبل الأدمن
+ */
+export const manualWalletTransaction = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { amount, type, reason } = req.body; // type: 'credit' or 'debit'
+
+    const amountNum = parseFloat(amount);
+    const updateData = type === 'credit' 
+      ? { increment: amountNum } 
+      : { decrement: amountNum };
+
+    const user = await prisma.user.update({
+      where: { id: parseInt(userId) },
+      data: { walletBalance: updateData }
+    });
+    
+    notifyUser({
+      userId: user.id,
+      title: type === 'credit' ? "تم إيداع مبلغ في محفظتك" : "تم خصم مبلغ من محفظتك",
+      message: `قام المسؤول بـ ${type === 'credit' ? 'إضافة' : 'خصم'} مبلغ ${amountNum.toLocaleString()} د.ع لسبب: ${reason || 'تسوية إدارية'}`,
+      type: "wallet"
+    });
+
+    res.status(200).json({ success: true, message: "تم تحديث الرصيد بنجاح", balance: user.walletBalance });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
