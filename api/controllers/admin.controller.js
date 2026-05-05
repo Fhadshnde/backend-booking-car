@@ -7,40 +7,60 @@ export const getAdminDashboard = async (req, res) => {
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
     const [
-      totalUsers,
-      activeUsers,
-      totalCompanies,
-      approvedCompanies,
-      totalCars,
-      availableCars,
-      totalBookings,
-      totalRevenue,
-      commissionStats,
+      usersStats,
+      companiesStats,
+      carsStats,
+      bookingsStats,
+      walletStats,
+      topCompanies,
       topCars,
       recentBookings,
-      pendingCompanies,
-      bookingsByStatus
+      pendingKycCount,
+      monthlyReports
     ] = await Promise.all([
-      prisma.user.count({ where: { role: "user" } }),
-      prisma.user.count({ where: { role: "user", isActive: true } }),
-      prisma.company.count(),
-      prisma.company.count({ where: { isApproved: true } }),
-      prisma.car.count(),
-      prisma.car.count({ where: { isAvailable: true, isSuspended: false } }),
-      prisma.booking.count(),
-      prisma.booking.aggregate({
-        where: { paymentStatus: "completed" },
-        _sum: { totalPrice: true }
-      }),
-      prisma.commission.aggregate({
+      // 1. إحصائيات المستخدمين
+      prisma.user.aggregate({
         _count: { id: true },
-        _avg: { percentage: true, fixedAmount: true }
+        where: { role: "user" }
       }),
+      // 2. إحصائيات الشركات
+      prisma.company.aggregate({
+        _count: { id: true },
+        where: { isApproved: true }
+      }),
+      // 3. إحصائيات السيارات
+      prisma.car.aggregate({
+        _count: { id: true },
+        where: { isAvailable: true, isSuspended: false }
+      }),
+      // 4. إحصائيات الحجوزات والوضع المالي
+      prisma.booking.aggregate({
+        _count: { id: true },
+        _sum: { totalPrice: true },
+        where: { status: "completed" }
+      }),
+      // 5. إحصائيات المحفظة (إجمالي أرصدة المستخدمين)
+      prisma.user.aggregate({
+        _sum: { walletBalance: true }
+      }),
+      // 6. أفضل 5 شركات من حيث الحجوزات
+      prisma.company.findMany({
+        take: 5,
+        orderBy: { bookings: { _count: 'desc' } },
+        select: {
+          id: true,
+          name: true,
+          logo: true,
+          _count: { select: { bookings: true } }
+        }
+      }),
+      // 7. أفضل 5 سيارات مطلوبة
       prisma.car.findMany({
         take: 5,
         orderBy: { totalBookings: "desc" },
         include: { company: { select: { name: true } } }
       }),
+      // 8. آخر 10 حجوزات
       prisma.booking.findMany({
         take: 10,
         orderBy: { createdAt: "desc" },
@@ -50,50 +70,43 @@ export const getAdminDashboard = async (req, res) => {
           company: { select: { name: true } }
         }
       }),
-      prisma.company.findMany({
-        where: { isApproved: false, isRejected: false },
-        include: { users: { take: 1, select: { name: true } } }
-      }),
-      prisma.booking.groupBy({
-        by: ["status"],
-        _count: { id: true }
-      })
+      // 9. عدد طلبات توثيق الهوية المعلقة
+      prisma.user.count({ where: { identityStatus: "pending" } }),
+      // 10. التقارير الشهرية (Revenue Growth)
+      prisma.$queryRaw`
+        SELECT 
+          EXTRACT(YEAR FROM "createdAt") as year,
+          EXTRACT(MONTH FROM "createdAt") as month,
+          COUNT(id) as bookings,
+          SUM("totalPrice") as revenue
+        FROM "Booking"
+        WHERE "createdAt" >= ${sixMonthsAgo} AND status = 'completed'
+        GROUP BY year, month
+        ORDER BY year DESC, month DESC
+      `
     ]);
-
-    const monthlyData = await prisma.$queryRaw`
-      SELECT 
-        EXTRACT(YEAR FROM "createdAt") as year,
-        EXTRACT(MONTH FROM "createdAt") as month,
-        COUNT(id) as bookings,
-        SUM("totalPrice") as revenue,
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
-        COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled
-      FROM "Booking"
-      WHERE "createdAt" >= ${sixMonthsAgo}
-      GROUP BY year, month
-      ORDER BY year DESC, month DESC
-    `;
 
     res.status(200).json({
       success: true,
       dashboard: {
-        users: { total: totalUsers, active: activeUsers },
-        companies: { total: totalCompanies, approved: approvedCompanies },
-        cars: { total: totalCars, available: availableCars },
-        bookings: {
-          total: totalBookings,
-          byStatus: bookingsByStatus.map(item => ({ _id: item.status, count: item._count.id }))
+        stats: {
+          totalUsers: usersStats._count.id,
+          activeCompanies: companiesStats._count.id,
+          availableCars: carsStats._count.id,
+          completedBookings: bookingsStats._count.id,
+          totalRevenue: Number(bookingsStats._sum.totalPrice || 0),
+          totalWalletBalance: Number(walletStats._sum.walletBalance || 0),
+          pendingKyc: pendingKycCount
         },
-        totalRevenue: totalRevenue._sum.totalPrice || 0,
-        commissions: {
-          totalCommissions: commissionStats._count.id,
-          avgPercentage: commissionStats._avg.percentage || 0,
-          avgFixedAmount: commissionStats._avg.fixedAmount || 0
-        },
-        monthlyReports: monthlyData,
+        topCompanies: topCompanies.map(c => ({
+          id: c.id,
+          name: c.name,
+          logo: c.logo,
+          bookingCount: c._count.bookings
+        })),
         topCars,
         recentBookings,
-        pendingCompanies
+        monthlyReports
       }
     });
   } catch (error) {
