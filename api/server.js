@@ -48,7 +48,20 @@ app.use(helmet());
 const allowOrigins = process.env.FRONTEND_URL 
   ? process.env.FRONTEND_URL.split(",") 
   : ["http://localhost:3000", "http://localhost:8081", "http://localhost:5173", "https://backend-booking-car.vercel.app"];
-app.use(cors({ origin: allowOrigins, credentials: true }));
+
+app.use(cors({ 
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowOrigins.indexOf(origin) !== -1 || allowOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(morgan("dev"));
