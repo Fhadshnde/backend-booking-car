@@ -16,7 +16,7 @@ export const createBooking = async (req, res) => {
       pickupLng,
       dropoffLat,
       dropoffLng,
-      driverLicense, // Still here for backward compatibility
+      driverLicense,
       hasDriver,
       promoCodeId,
       digitalSignature,
@@ -36,7 +36,6 @@ export const createBooking = async (req, res) => {
     }
 
     console.log("🚀 Starting Booking Creation...");
-    // 1. التحقق من وجود السيارة والتأريخ
     const car = await prisma.car.findUnique({
       where: { id: parsedCarId }
     });
@@ -70,11 +69,11 @@ export const createBooking = async (req, res) => {
     // 2. نظام التحقق المشروط (KYC Logic) & القائمة السوداء
     const [user, previousBookingsCount] = await Promise.all([
       prisma.user.findUnique({ where: { id: req.user.id } }),
-      prisma.booking.count({ 
-        where: { 
-          userId: req.user.id, 
-          status: { in: ["confirmed", "completed", "on_trip"] } 
-        } 
+      prisma.booking.count({
+        where: {
+          userId: req.user.id,
+          status: { in: ["confirmed", "completed", "on_trip"] }
+        }
       })
     ]);
 
@@ -84,9 +83,9 @@ export const createBooking = async (req, res) => {
 
     // أ. فحص الحظر المباشر على الحساب
     if (user.isBlacklisted) {
-      return res.status(403).json({ 
-        success: false, 
-        message: `عذراً، لا يمكنك الحجز حالياً. السبب: ${user.blacklistReason || "مخالفة الشروط والأحكام"}` 
+      return res.status(403).json({
+        success: false,
+        message: `عذراً، لا يمكنك الحجز حالياً. السبب: ${user.blacklistReason || "مخالفة الشروط والأحكام"}`
       });
     }
 
@@ -94,9 +93,9 @@ export const createBooking = async (req, res) => {
     if (user.idNumber) {
       const blacklisted = await prisma.blacklist.findUnique({ where: { idNumber: user.idNumber } });
       if (blacklisted) {
-        return res.status(403).json({ 
-          success: false, 
-          message: `عذراً، تم حظر رقم الهوية هذا من النظام. السبب: ${blacklisted.reason || "غير محدد"}` 
+        return res.status(403).json({
+          success: false,
+          message: `عذراً، تم حظر رقم الهوية هذا من النظام. السبب: ${blacklisted.reason || "غير محدد"}`
         });
       }
     }
@@ -104,27 +103,27 @@ export const createBooking = async (req, res) => {
     if (hasDriver) {
       // تأجير بسائق: الهوية فقط
       if (user.identityStatus !== "verified") {
-        return res.status(400).json({ 
-          success: false, 
+        return res.status(400).json({
+          success: false,
           message: "يرجى استكمال وثائق الهوية الشخصية لتتمكن من الحجز مع سائق",
-          requireKYC: true 
+          requireKYC: true
         });
       }
     } else {
       // قيادة ذاتية: هوية + إجازة سوق
       if (user.identityStatus !== "verified" || !user.licenseNumber) {
-        return res.status(400).json({ 
-          success: false, 
+        return res.status(400).json({
+          success: false,
           message: "يرجى استكمال وثائق الهوية وإجازة السوق لتتمكن من حجز سيارة للقيادة الذاتية",
-          requireKYC: true 
+          requireKYC: true
         });
       }
 
       // التحقق من صلاحية الإجازة خلال فترة الحجز
       if (user.licenseExpiry && new Date(user.licenseExpiry) < end) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "عذراً، إجازة السوق الخاصة بك ستنتهي خلال فترة الحجز. يرجى تحديثها أولاً." 
+        return res.status(400).json({
+          success: false,
+          message: "عذراً، إجازة السوق الخاصة بك ستنتهي خلال فترة الحجز. يرجى تحديثها أولاً."
         });
       }
     }
@@ -286,7 +285,7 @@ export const createBooking = async (req, res) => {
     notifyUser({
       userId: booking.userId,
       title: isConfirmed ? "تم تأكيد الحجز بنجاح! ✅" : "تم استلام طلب الحجز 🚗",
-      message: isConfirmed 
+      message: isConfirmed
         ? `تم تأكيد حجزك للسيارة ${booking.car.model} بنجاح. يمكنك مراجعة التفاصيل في قائمة حجوزاتك.`
         : `تم استلام طلب حجزك للسيارة ${booking.car.model}. سنقوم بإشعارك عند تأكيد الحجز من قبل الشركة.`,
       type: "booking",
@@ -358,8 +357,8 @@ export const cancelBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    
-    const booking = await prisma.booking.findUnique({ 
+
+    const booking = await prisma.booking.findUnique({
       where: { id: Number(id) },
       include: { user: true, car: true }
     });
@@ -387,9 +386,9 @@ export const cancelBooking = async (req, res) => {
       // نعتبر أن العربون المدفوع هو totalRequiredDeposit
       refundAmount = totalRequiredDeposit * refundPercentage;
     } else if (booking.paymentStatus === "partial") {
-       // في حالة الدفع الجزئي، نعتمد على ما تم خصمه من المحفظة حتى الآن كدليل
-       const amountPaid = booking.walletDiscount || 0;
-       refundAmount = amountPaid * refundPercentage;
+      // في حالة الدفع الجزئي، نعتمد على ما تم خصمه من المحفظة حتى الآن كدليل
+      const amountPaid = booking.walletDiscount || 0;
+      refundAmount = amountPaid * refundPercentage;
     }
 
     const operations = [
@@ -417,15 +416,15 @@ export const cancelBooking = async (req, res) => {
     notifyUser({
       userId: booking.userId,
       title: "تم إلغاء الحجز ❌",
-      message: refundAmount > 0 
+      message: refundAmount > 0
         ? `تم إلغاء حجزك #${booking.confirmationCode}. طلب استرداد المبلغ (${refundAmount.toLocaleString()} د.ع) قيد المراجعة الآن.`
         : `تم إلغاء حجزك #${booking.confirmationCode} بنجاح.`,
       type: "booking",
       relatedBooking: booking.id
     });
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       message,
       booking: updatedBooking,
       refundAmount
@@ -543,10 +542,10 @@ export const confirmBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const { paymentReceived = false } = req.body; // خيار لتأكيد استلام المبلغ نقداً
-    
+
     const booking = await prisma.booking.findUnique({ where: { id: Number(id) } });
     if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });
-    
+
     // فحص الصلاحيات
     if (req.user.role === "company" && booking.companyId !== req.user.companyId) {
       return res.status(403).json({ success: false, message: "غير مصرح لك بتأكيد هذا الحجز" });
@@ -554,7 +553,7 @@ export const confirmBooking = async (req, res) => {
 
     const updated = await prisma.booking.update({
       where: { id: Number(id) },
-      data: { 
+      data: {
         status: "confirmed",
         paymentStatus: paymentReceived ? "verified" : booking.paymentStatus,
         updatedAt: new Date()
@@ -583,7 +582,7 @@ export const completeBooking = async (req, res) => {
     const { id } = req.params;
     const booking = await prisma.booking.findUnique({ where: { id: Number(id) } });
     if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });
-    
+
     const defaultSettings = { cashbackPercentage: 5 };
     const settings = await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } }) || defaultSettings;
     const cashbackAmount = (booking.totalPrice * settings.cashbackPercentage) / 100;
@@ -703,7 +702,7 @@ export const addManualCashbackAfterCompletion = async (req, res) => {
 
     const defaultSettings = { cashbackPercentage: 5 };
     const settings = await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } }) || defaultSettings;
-    
+
     const finalPercentage = cashbackPercentage || settings.cashbackPercentage;
     const amount = (booking.totalPrice * finalPercentage) / 100;
 

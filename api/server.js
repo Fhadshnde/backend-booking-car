@@ -47,7 +47,8 @@ app.use(helmet());
 
 const allowOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",") : ["http://localhost:3000", "http://localhost:8081", "https://backend-booking-car.vercel.app"];
 app.use(cors({ origin: allowOrigins, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(morgan("dev"));
 
 app.use("/uploads", express.static(uploadDir));
