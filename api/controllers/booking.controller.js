@@ -601,8 +601,8 @@ export const updateBookingStatusAdmin = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, driverId, driverPrice, deliveryFee, totalPrice } = req.body;
-
-    const booking = await prisma.booking.findUnique({ where: { id: Number(id) } });
+    
+    console.log(`[DEBUG] Updating booking ${id}:`, { status, driverId, driverPrice, deliveryFee, totalPrice });
     if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });
 
     // Permissions check
