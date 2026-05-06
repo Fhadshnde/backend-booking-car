@@ -51,10 +51,11 @@ export const createPaymentIntent = async (req, res) => {
     let description = "";
 
     if (paymentType === "deposit") {
-      if (booking.paymentStatus === "paid" || booking.paymentStatus === "verified") {
-        return res.status(400).json({ success: false, message: "تم دفع العربون مسبقاً" });
+      // التحقق من المبلغ المتبقي للعربون بدلاً من الحالة النصية فقط
+      if (booking.deposit <= 0 || booking.paymentStatus === "paid" || booking.paymentStatus === "verified") {
+        return res.status(400).json({ success: false, message: "تم دفع العربون مسبقاً بالكامل" });
       }
-      amount = booking.deposit; // This is the remaining deposit saved in DB
+      amount = booking.deposit; 
       description = `دفع عربون حجز السيارة ${booking.car.brand.name} ${booking.car.model}`;
     } else if (paymentType === "remaining" || paymentType === "full") {
       const alreadyPaid = (booking.paymentStatus === "verified" || booking.paymentStatus === "paid") ? initialDepositAmount : 0;

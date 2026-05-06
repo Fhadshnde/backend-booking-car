@@ -680,7 +680,8 @@ export const confirmDeposit = async (req, res) => {
       where: { id: Number(id) },
       data: {
         status: "confirmed",
-        paymentStatus: "partial",
+        paymentStatus: "verified",
+        deposit: 0,
         updatedAt: new Date()
       }
     });
