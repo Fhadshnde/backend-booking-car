@@ -29,7 +29,7 @@ router.get("/:id", protect, getBooking);
 router.get("/:id/details", protect, getBookingDetails);
 router.post("/", protect, restrictTo("user"), createBooking);
 router.put("/:id", protect, restrictTo("user"), updateBooking);
-router.delete("/:id", protect, restrictTo("user"), cancelBooking);
+router.delete("/:id", protect, restrictTo("user", "admin", "company"), cancelBooking);
 router.put("/:id/confirm-deposit", protect, restrictTo("company", "admin"), confirmDeposit);
 router.put("/:id/confirm", protect, restrictTo("company", "admin"), confirmBooking);
 router.put("/:id/complete-payment", protect, completePayment);

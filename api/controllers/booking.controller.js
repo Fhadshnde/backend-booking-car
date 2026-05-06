@@ -364,7 +364,21 @@ export const cancelBooking = async (req, res) => {
     });
 
     if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });
-    if (booking.userId !== req.user.id) return res.status(403).json({ success: false, message: "غير مصرح لك" });
+
+    // Authorization logic: Admin can do anything, Company can cancel their car bookings, User only their own
+    const isAdmin = req.user.role === 'admin';
+    const isCompany = req.user.role === 'company';
+    const isOwner = booking.userId === req.user.id;
+
+    if (!isAdmin) {
+      if (isCompany) {
+        if (booking.car.companyId !== req.user.companyId) {
+          return res.status(403).json({ success: false, message: "غير مصرح لك بإلغاء حجز لشركة أخرى" });
+        }
+      } else if (!isOwner) {
+        return res.status(403).json({ success: false, message: "غير مصرح لك بإلغاء هذا الحجز" });
+      }
+    }
     if (booking.status === "cancelled") return res.status(400).json({ success: false, message: "الحجز ملغي بالفعل" });
     if (booking.status === "completed") return res.status(400).json({ success: false, message: "لا يمكن إلغاء حجز مكتمل" });
     if (booking.status === "on_trip") return res.status(400).json({ success: false, message: "لا يمكن إلغاء حجز أثناء الرحلة" });
