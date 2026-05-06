@@ -821,15 +821,24 @@ export const updateCompany = async (req, res) => {
 
       // 3. تحديث العمولة إذا تم إرسال نسبة جديدة
       if (percentage) {
-        await tx.commission.upsert({
-          where: { companyId: company.id }, // نفترض أن هناك UNIQUE constraint على companyId
-          update: { percentage: parseFloat(percentage) },
-          create: { 
-            companyId: company.id, 
-            percentage: parseFloat(percentage),
-            updatedBy: req.user?.id ? parseInt(req.user.id) : null
-          }
+        const existingComm = await tx.commission.findFirst({
+          where: { companyId: company.id }
         });
+
+        if (existingComm) {
+          await tx.commission.update({
+            where: { id: existingComm.id },
+            data: { percentage: parseFloat(percentage) }
+          });
+        } else {
+          await tx.commission.create({
+            data: { 
+              companyId: company.id, 
+              percentage: parseFloat(percentage),
+              updatedBy: req.user?.id ? parseInt(req.user.id) : null
+            }
+          });
+        }
       }
 
       return company;
