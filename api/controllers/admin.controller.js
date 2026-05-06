@@ -732,28 +732,27 @@ export const manualWalletTransaction = async (req, res) => {
  */
 export const createCompany = async (req, res) => {
   try {
-    const { name, address, city, logo, phone, licenseNumber, description, ownerId } = req.body;
+    const { 
+      name, address, city, logo, phone, licenseNumber, description, ownerId,
+      email, website, facebook, instagram, taxNumber, workingHoursOpen, workingHoursClose,
+      percentage, fixedAmount 
+    } = req.body;
 
     if (!ownerId) {
       return res.status(400).json({ success: false, message: "يجب اختيار صاحب للشركة" });
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // 1. إنشاء الشركة
+      // 1. إنشاء الشركة بكافة الحقول
       const company = await tx.company.create({
         data: {
-          name,
-          address,
-          city,
-          logo,
-          phone,
-          licenseNumber,
-          description,
+          name, address, city, logo, phone, licenseNumber, description,
+          email, website, facebook, instagram, taxNumber, workingHoursOpen, workingHoursClose,
           isApproved: true
         }
       });
 
-      // 2. ربط المستخدم بالشركة وتغيير دوره إلى 'company'
+      // 2. ربط المستخدم بالشركة وتغيير دوره
       await tx.user.update({
         where: { id: parseInt(ownerId) },
         data: { 
@@ -762,10 +761,20 @@ export const createCompany = async (req, res) => {
         }
       });
 
+      // 3. إنشاء سجل العمولة المالية
+      await tx.commission.create({
+        data: {
+          companyId: company.id,
+          percentage: parseFloat(percentage) || 10, // الافتراضي 10%
+          fixedAmount: parseFloat(fixedAmount) || 0,
+          updatedBy: req.user?.id ? parseInt(req.user.id) : null
+        }
+      });
+
       return company;
     });
 
-    res.status(201).json({ success: true, message: "تم إنشاء الشركة وربط المالك بنجاح", company: result });
+    res.status(201).json({ success: true, message: "تم إنشاء الشركة وإعداد العمولات بنجاح", company: result });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
