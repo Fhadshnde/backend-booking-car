@@ -32,6 +32,7 @@ import ticketRoutes from "./routes/ticket.routes.js";
 import promoRoutes from "./routes/promo.routes.js";
 import driverRoutes from "./routes/driver.routes.js";
 import damageReportRoutes from "./routes/damageReport.routes.js";
+import blacklistRoutes from "./routes/blacklist.routes.js";
 import { globalErrorHandler } from "./middleware/error.middleware.js";
 import AppError from "./helpers/AppError.js";
 
@@ -102,6 +103,7 @@ app.use("/api/tickets", ticketRoutes);
 app.use("/api/promos", promoRoutes);
 app.use("/api/drivers", driverRoutes);
 app.use("/api/damage-reports", damageReportRoutes);
+app.use("/api/blacklist", blacklistRoutes);
 
 app.all("*", (req, res, next) => {
   next(new AppError(`المسار غير موجود: ${req.originalUrl}`, 404));
