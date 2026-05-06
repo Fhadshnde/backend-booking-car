@@ -441,7 +441,9 @@ export const getBookingDetails = async (req, res) => {
       include: {
         car: true,
         company: true,
-        user: { select: { name: true, phone: true, profileImage: true, idNumber: true, licenseNumber: true, identityStatus: true } }
+        driver: true,
+        promoCode: true,
+        user: { select: { name: true, phone: true, profileImage: true, idNumber: true, licenseNumber: true, identityStatus: true, walletBalance: true } }
       }
     });
     if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });
@@ -465,7 +467,13 @@ export const getBookings = async (req, res) => {
         where,
         skip,
         take: Number(limit),
-        include: { user: { select: { name: true } }, car: { select: { model: true, images: true } }, company: { select: { name: true } } },
+        include: { 
+          user: { select: { name: true, phone: true, profileImage: true } }, 
+          car: { select: { model: true, images: true, licensePlate: true, color: true } }, 
+          company: { select: { name: true, phone: true } },
+          driver: { select: { name: true, phone: true } },
+          promoCode: { select: { code: true, value: true, type: true } }
+        },
         orderBy: { createdAt: "desc" }
       }),
       prisma.booking.count({ where })
@@ -533,6 +541,39 @@ export const updateBooking = async (req, res) => {
       }
     });
     res.status(200).json({ success: true, booking: updatedBooking });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateBookingStatusAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const booking = await prisma.booking.findUnique({ where: { id: Number(id) } });
+    if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });
+
+    // Permissions check
+    if (req.user.role === "company" && booking.companyId !== req.user.companyId) {
+      return res.status(403).json({ success: false, message: "غير مصرح لك بتعديل هذا الحجز" });
+    }
+
+    const updated = await prisma.booking.update({
+      where: { id: Number(id) },
+      data: { status, updatedAt: new Date() },
+      include: { user: true, car: true, company: true }
+    });
+
+    notifyUser({
+      userId: updated.userId,
+      title: "تحديث في حالة حجزك 🔔",
+      message: `تم تغيير حالة حجزك للسيارة ${updated.car.model} إلى: ${status}`,
+      type: "booking",
+      relatedBooking: updated.id
+    });
+
+    res.status(200).json({ success: true, message: "تم تحديث الحالة بنجاح", booking: updated });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

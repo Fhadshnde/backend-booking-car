@@ -15,6 +15,7 @@ import {
   getReservedDates,
   processExpiredBookingsCashback,
   addManualCashbackAfterCompletion,
+  updateBookingStatusAdmin
 } from "../controllers/booking.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
 
@@ -33,6 +34,7 @@ router.put("/:id/confirm-deposit", protect, restrictTo("company", "admin"), conf
 router.put("/:id/confirm", protect, restrictTo("company", "admin"), confirmBooking);
 router.put("/:id/complete-payment", protect, completePayment);
 router.put("/:id/complete", protect, restrictTo("company", "admin"), completeBooking);
+router.patch("/:id/status", protect, restrictTo("company", "admin"), updateBookingStatusAdmin);
 router.get("/process-expired-cashback", protect, restrictTo("admin"), processExpiredBookingsCashback);
 router.put("/:id/add-cashback-after-completion", protect, restrictTo("company", "admin"), addManualCashbackAfterCompletion);
 
