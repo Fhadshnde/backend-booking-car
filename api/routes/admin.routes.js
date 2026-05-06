@@ -13,14 +13,15 @@ import {
   respondToComplaint,
   approveRefund,
   rejectRefund,
-  getPendingKyc,
-  approveKyc,
+  getPendingKyc, 
+  approveKyc, 
   rejectKyc,
   approveKycByPhone,
   manualWalletTransaction,
   createCompany,
   updateCompany,
-  deleteCompany
+  deleteCompany,
+  updateUser
 } from "../controllers/admin.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
 
@@ -32,6 +33,7 @@ router.get("/dashboard", getAdminDashboard);
 
 router.put("/users/:userId/toggle-status", toggleUserStatus);
 router.put("/users/:userId/manual-wallet", manualWalletTransaction);
+router.put("/users/:id", updateUser);
 
 router.get("/companies/pending", getPendingCompanies);
 router.post("/companies", createCompany);

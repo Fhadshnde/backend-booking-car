@@ -479,6 +479,72 @@ export const respondToComplaint = async (req, res) => {
 
 // --- KYC Management ---
 
+export const getUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, role, search } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    let where = {};
+    if (role && role !== 'all') where.role = role;
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search } }
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          role: true,
+          isActive: true,
+          walletBalance: true,
+          identityStatus: true,
+          companyId: true,
+          createdAt: true
+        }
+      }),
+      prisma.user.count({ where })
+    ]);
+
+    res.status(200).json({ success: true, data: users, total });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * تحديث بيانات مستخدم (تغيير الرتبة مثلاً)
+ */
+export const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role, isActive } = req.body;
+
+    const user = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: { role, isActive },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        isActive: true
+      }
+    });
+
+    res.status(200).json({ success: true, message: "تم تحديث البيانات بنجاح", user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "فشل في تحديث بيانات المستخدم" });
+  }
+};
+
 export const getPendingKyc = async (req, res) => {
   try {
     const pendingUsers = await prisma.user.findMany({
@@ -650,22 +716,40 @@ export const manualWalletTransaction = async (req, res) => {
  */
 export const createCompany = async (req, res) => {
   try {
-    const { name, address, city, logo, phone, licenseNumber, description } = req.body;
+    const { name, address, city, logo, phone, licenseNumber, description, ownerId } = req.body;
 
-    const company = await prisma.company.create({
-      data: {
-        name,
-        address,
-        city,
-        logo,
-        phone,
-        licenseNumber,
-        description,
-        isApproved: true
-      }
+    if (!ownerId) {
+      return res.status(400).json({ success: false, message: "يجب اختيار صاحب للشركة" });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. إنشاء الشركة
+      const company = await tx.company.create({
+        data: {
+          name,
+          address,
+          city,
+          logo,
+          phone,
+          licenseNumber,
+          description,
+          isApproved: true
+        }
+      });
+
+      // 2. ربط المستخدم بالشركة وتغيير دوره إلى 'company'
+      await tx.user.update({
+        where: { id: parseInt(ownerId) },
+        data: { 
+          companyId: company.id,
+          role: 'company'
+        }
+      });
+
+      return company;
     });
 
-    res.status(201).json({ success: true, message: "تم إنشاء الشركة بنجاح", company });
+    res.status(201).json({ success: true, message: "تم إنشاء الشركة وربط المالك بنجاح", company: result });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
