@@ -5,16 +5,23 @@ export const getDrivers = async (req, res) => {
     const { search = '', page = 1, limit = 10, companyId, isAvailable } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const where = {
-      OR: [
+    const where = {};
+
+    if (search) {
+      where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search, mode: 'insensitive' } },
         { licenseNumber: { contains: search, mode: 'insensitive' } }
-      ]
-    };
+      ];
+    }
 
-    if (companyId) where.companyId = parseInt(companyId);
-    if (isAvailable !== undefined) where.isAvailable = isAvailable === 'true';
+    if (companyId && companyId !== 'null' && companyId !== '') {
+      where.companyId = parseInt(companyId);
+    }
+    
+    if (isAvailable !== undefined && isAvailable !== '') {
+      where.isAvailable = isAvailable === 'true';
+    }
 
     const [drivers, total] = await prisma.$transaction([
       prisma.driver.findMany({
