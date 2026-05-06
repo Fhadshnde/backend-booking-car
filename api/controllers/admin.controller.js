@@ -520,6 +520,22 @@ export const getUsers = async (req, res) => {
   }
 };
 
+export const getUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await prisma.user.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        company: true
+      }
+    });
+    if (!user) return res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+    res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 /**
  * تحديث بيانات مستخدم (تغيير الرتبة مثلاً)
  */

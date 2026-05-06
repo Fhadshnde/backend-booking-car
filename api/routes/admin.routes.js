@@ -1,6 +1,8 @@
 import express from "express";
 import { 
   getAdminDashboard, 
+  getUsers,
+  getUser,
   toggleUserStatus, 
   approveCompany, 
   rejectCompany, 
@@ -31,6 +33,8 @@ router.use(protect, restrictTo("admin"));
 
 router.get("/dashboard", getAdminDashboard);
 
+router.get("/users", getUsers);
+router.get("/users/:id", getUser);
 router.put("/users/:userId/toggle-status", toggleUserStatus);
 router.put("/users/:userId/manual-wallet", manualWalletTransaction);
 router.put("/users/:id", updateUser);
