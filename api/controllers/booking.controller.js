@@ -462,7 +462,7 @@ export const getBookings = async (req, res) => {
     if (paymentMethod) where.paymentMethod = paymentMethod;
     if (req.user.role === "company") where.companyId = req.user.companyId;
 
-    const [bookings, total] = await Promise.all([
+    const [bookings, total, stats] = await Promise.all([
       prisma.booking.findMany({
         where,
         skip,
@@ -476,13 +476,40 @@ export const getBookings = async (req, res) => {
         },
         orderBy: { createdAt: "desc" }
       }),
-      prisma.booking.count({ where })
+      prisma.booking.count({ where }),
+      prisma.booking.groupBy({
+        by: ['status'],
+        _count: true
+      })
     ]);
+
+    const statsObj = {
+      total: await prisma.booking.count(req.user.role === "company" ? { where: { companyId: req.user.companyId } } : {}),
+      pending: 0,
+      pending_document_review: 0,
+      pending_deposit: 0,
+      confirmed: 0,
+      on_trip: 0,
+      completed: 0,
+      cancelled: 0
+    };
+
+    stats.forEach(s => {
+      if (statsObj.hasOwnProperty(s.status)) {
+        statsObj[s.status] = s._count;
+      }
+    });
 
     res.status(200).json({
       success: true,
       bookings,
-      pagination: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) }
+      stats: statsObj,
+      pagination: { 
+        total, 
+        page: Number(page), 
+        limit: Number(limit), 
+        pages: Math.ceil(total / limit) 
+      }
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
