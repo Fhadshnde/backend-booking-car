@@ -25,12 +25,12 @@ router.get("/", optionalAuth, getCars);
 router.get("/home/cars", getHomeCars);
 router.get("/recommended", getRecommendedCarsAction);
 router.get("/search", searchCars);
+router.get("/analytics", protect, restrictTo("company", "admin"), getCompanyAnalytics);
 router.get("/brand/:brandId", getCarsByBrand);
 router.get("/company/:companyId", optionalAuth, getCarsByCompany);
 router.get("/:id", getCar);
 router.get("/:id/details", getCarDetails);
 router.get("/:id/availability", getCarAvailability);
-router.get("/analytics", protect, restrictTo("company", "admin"), getCompanyAnalytics);
 router.patch("/:id/toggle-status", protect, restrictTo("admin", "company"), toggleCarAvailability);
 
 router.post("/", protect, restrictTo("admin", "company"), uploadCarImages, validate(createCarSchema), createCar);

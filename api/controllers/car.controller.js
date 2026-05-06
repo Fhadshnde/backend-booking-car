@@ -193,8 +193,13 @@ export const getCars = async (req, res) => {
 
 export const getCar = async (req, res) => {
   try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, message: "معرف السيارة غير صالح" });
+    }
+
     const car = await prisma.car.findUnique({
-      where: { id: Number(req.params.id) },
+      where: { id },
       include: {
         company: { select: { name: true, phone: true, address: true, rating: true, city: true } },
         category: { select: { name: true, icon: true } },
