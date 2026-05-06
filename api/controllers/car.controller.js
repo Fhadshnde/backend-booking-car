@@ -229,7 +229,8 @@ export const createCar = async (req, res) => {
       mileage,
       description,
       latitude,
-      longitude
+      longitude,
+      driverPricePerDay
     } = req.body;
 
     // Handle images from Multer (req.files) and any existing image URLs in req.body
@@ -279,6 +280,7 @@ export const createCar = async (req, res) => {
           images: carImages,
           latitude: latitude ? Number(latitude) : undefined,
           longitude: longitude ? Number(longitude) : undefined,
+          driverPricePerDay: Number(driverPricePerDay || 0),
           brand: { connect: { id: Number(brandId) } },
           category: { connect: { id: Number(categoryId) } },
           company: { connect: { id: Number(targetCompanyId) } }
@@ -302,7 +304,7 @@ export const updateCar = async (req, res) => {
     const {
       model, brandId, categoryId, companyId, pricePerDay, insurancePrice,
       year, licensePlate, color, transmission, fuelType, seats, mileage,
-      description, images, latitude, longitude
+      description, images, latitude, longitude, driverPricePerDay
     } = req.body;
 
     const car = await prisma.car.update({
@@ -314,6 +316,7 @@ export const updateCar = async (req, res) => {
         companyId: companyId ? Number(companyId) : undefined,
         pricePerDay: pricePerDay ? Number(pricePerDay) : undefined,
         insurancePrice: insurancePrice ? Number(insurancePrice) : undefined,
+        driverPricePerDay: driverPricePerDay !== undefined ? Number(driverPricePerDay) : undefined,
         year: year ? Number(year) : undefined,
         licensePlate,
         color,
