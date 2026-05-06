@@ -61,3 +61,13 @@ export const createPromoCode = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+export const getPromos = async (req, res) => {
+  try {
+    const promos = await prisma.promoCode.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    res.status(200).json({ success: true, promos });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
