@@ -174,12 +174,11 @@ export const confirmPayment = async (req, res) => {
     const dataToUpdate = {
       paymentStatus: newPaymentStatus,
       walletDiscount: { increment: requiredFromWallet },
-      deposit: Math.max(0, (booking.deposit || 0) - (paymentMethod === "wallet" ? requiredFromWallet : 0))
+      deposit: Math.max(0, (booking.deposit || 0) - requiredFromWallet)
     };
 
-    if (newPaymentStatus === "verified" || newPaymentStatus === "paid") {
-      dataToUpdate.status = "confirmed";
-    }
+    // Note: We no longer auto-set status to 'confirmed' here. 
+    // The admin must manually confirm the booking from the dashboard.
 
     const results = await prisma.$transaction([
       prisma.booking.update({ where: { id: id }, data: dataToUpdate }),
