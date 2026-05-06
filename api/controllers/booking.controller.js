@@ -81,6 +81,12 @@ export const createBooking = async (req, res) => {
       return res.status(404).json({ success: false, message: "المستخدم غير موجود" });
     }
 
+    console.log("User Data from DB:", { 
+      identityStatus: user.identityStatus, 
+      licenseNumber: user.licenseNumber,
+      hasDriver: hasDriver 
+    });
+
     // أ. فحص الحظر المباشر على الحساب
     if (user.isBlacklisted) {
       return res.status(403).json({
@@ -112,6 +118,10 @@ export const createBooking = async (req, res) => {
     } else {
       // قيادة ذاتية: هوية + إجازة سوق
       if (user.identityStatus !== "verified" || !user.licenseNumber) {
+        console.log("❌ KYC Failed: verified status or license missing", { 
+          status: user.identityStatus, 
+          license: user.licenseNumber 
+        });
         return res.status(400).json({
           success: false,
           message: "يرجى استكمال وثائق الهوية وإجازة السوق لتتمكن من حجز سيارة للقيادة الذاتية",
