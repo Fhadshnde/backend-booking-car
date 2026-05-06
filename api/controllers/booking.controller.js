@@ -808,3 +808,37 @@ export const addManualCashbackAfterCompletion = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const deleteBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: Number(id) }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "الحجز غير موجود" });
+    }
+
+    // Authorization: Admin or the company that owns the car
+    if (req.user.role !== 'admin' && req.user.companyId !== booking.companyId) {
+      return res.status(403).json({ success: false, message: "غير مصرح لك بحذف هذا الحجز" });
+    }
+
+    // Delete related records manually since cascade is not set in prisma schema
+    await prisma.$transaction([
+      prisma.damageReport.deleteMany({ where: { bookingId: Number(id) } }),
+      prisma.review.deleteMany({ where: { bookingId: Number(id) } }),
+      prisma.notification.deleteMany({ where: { bookingId: Number(id) } }),
+      prisma.booking.delete({ where: { id: Number(id) } })
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: "تم حذف الحجز بنجاح"
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
