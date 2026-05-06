@@ -144,7 +144,7 @@ model Car {
 
 model Driver {
   id            Int       @id @default(autoincrement())
-  companyId     Int
+  companyId     Int?
   name          String
   phone         String    @unique
   licenseNumber String    @unique
@@ -154,7 +154,7 @@ model Driver {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   bookings      Booking[]
-  company       Company   @relation(fields: [companyId], references: [id])
+  company       Company?  @relation(fields: [companyId], references: [id])
 }
 
 model PromoCode {

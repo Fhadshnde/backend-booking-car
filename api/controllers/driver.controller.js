@@ -57,24 +57,28 @@ export const getAvailableDrivers = async (req, res) => {
 
 export const createDriver = async (req, res) => {
   try {
-    const { companyId, name, phone, licenseNumber, image, isAvailable } = req.body;
-    
-    // Default companyId to user's companyId if not admin and not provided
-    const finalCompanyId = req.user.role === 'admin' ? parseInt(companyId) : req.user.companyId;
+    const { companyId, name, phone, licenseNumber, isAvailable } = req.body;
+    let { image } = req.body;
 
-    if (!finalCompanyId) {
-      return res.status(400).json({ success: false, message: "يجب تحديد الشركة" });
+    if (req.file) {
+      const b64 = Buffer.from(req.file.buffer).toString("base64");
+      image = `data:${req.file.mimetype};base64,${b64}`;
+    }
+    
+    const driverData = {
+      name,
+      phone,
+      licenseNumber,
+      image,
+      isAvailable: isAvailable !== undefined ? isAvailable : true
+    };
+
+    if (companyId && companyId !== 'null' && companyId !== '') {
+      driverData.company = { connect: { id: parseInt(companyId) } };
     }
 
     const driver = await prisma.driver.create({
-      data: {
-        name,
-        phone,
-        licenseNumber,
-        image,
-        isAvailable: isAvailable !== undefined ? isAvailable : true,
-        company: { connect: { id: finalCompanyId } }
-      }
+      data: driverData
     });
     res.status(201).json({ success: true, driver });
   } catch (error) {
@@ -85,26 +89,36 @@ export const createDriver = async (req, res) => {
 export const updateDriver = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, phone, licenseNumber, image, isAvailable, companyId } = req.body;
+    const { name, phone, licenseNumber, isAvailable, companyId } = req.body;
+    let { image } = req.body;
 
     const existingDriver = await prisma.driver.findUnique({ where: { id: parseInt(id) } });
     if (!existingDriver) return res.status(404).json({ success: false, message: "السائق غير موجود" });
 
-    // Authorization: Admin or Company owner
-    if (req.user.role !== 'admin' && req.user.companyId !== existingDriver.companyId) {
+    // Authorization: Admin or Company owner (if driver belongs to a company)
+    if (req.user.role !== 'admin' && existingDriver.companyId && req.user.companyId !== existingDriver.companyId) {
       return res.status(403).json({ success: false, message: "غير مصرح لك بتعديل هذا السائق" });
+    }
+
+    if (req.file) {
+      const b64 = Buffer.from(req.file.buffer).toString("base64");
+      image = `data:${req.file.mimetype};base64,${b64}`;
     }
 
     const data = {
       name,
       phone,
       licenseNumber,
-      image,
-      isAvailable: isAvailable !== undefined ? isAvailable : existingDriver.isAvailable
+      image: image || existingDriver.image,
+      isAvailable: isAvailable !== undefined ? (isAvailable === 'true' || isAvailable === true) : existingDriver.isAvailable
     };
 
-    if (req.user.role === 'admin' && companyId) {
-      data.companyId = parseInt(companyId);
+    if (req.user.role === 'admin') {
+      if (companyId === 'null' || companyId === '') {
+        data.companyId = null;
+      } else if (companyId) {
+        data.companyId = parseInt(companyId);
+      }
     }
 
     const driver = await prisma.driver.update({
