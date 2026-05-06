@@ -461,21 +461,42 @@ export const toggleCarAvailability = async (req, res) => {
 
 export const getCompanyAnalytics = async (req, res) => {
   try {
-    const companyId = Number(req.user.companyId);
-    const [stats, carStats] = await Promise.all([
+    const isCompany = req.user.role.toLowerCase() === "company";
+    const companyId = isCompany ? Number(req.user.companyId) : (req.query.companyId ? Number(req.query.companyId) : null);
+    
+    const where = companyId ? { companyId } : {};
+
+    const [stats, carStats, globalStats] = await Promise.all([
       prisma.booking.aggregate({
-        where: { companyId },
+        where: { ...where, status: "completed" },
         _sum: { totalPrice: true },
         _count: { id: true }
       }),
       prisma.car.groupBy({
         by: ['categoryId'],
-        where: { companyId },
+        where,
         _count: { id: true },
         _avg: { pricePerDay: true }
-      })
+      }),
+      !companyId ? prisma.car.aggregate({
+        _count: { id: true },
+        _avg: { pricePerDay: true }
+      }) : Promise.resolve(null)
     ]);
-    res.status(200).json({ success: true, analytics: stats, inventoryDistribution: carStats });
+
+    const analytics = {
+      totalRevenue: Number(stats._sum.totalPrice || 0),
+      totalBookings: stats._count.id,
+      totalCars: companyId ? (carStats.reduce((acc, curr) => acc + curr._count.id, 0)) : (globalStats?._count.id || 0),
+      availableCars: await prisma.car.count({ where: { ...where, isAvailable: true, isSuspended: false } }),
+      averagePrice: companyId ? (carStats.reduce((acc, curr) => acc + Number(curr._avg.pricePerDay || 0), 0) / (carStats.length || 1)) : Number(globalStats?._avg.pricePerDay || 0)
+    };
+
+    res.status(200).json({ 
+      success: true, 
+      analytics, 
+      inventoryDistribution: carStats 
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
