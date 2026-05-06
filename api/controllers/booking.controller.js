@@ -683,8 +683,18 @@ export const confirmDeposit = async (req, res) => {
         paymentStatus: "verified",
         deposit: 0,
         updatedAt: new Date()
-      }
+      },
+      include: { car: true } // Need car details for the notification
     });
+
+    notifyUser({
+      userId: updated.userId,
+      title: "تم استلام العربون ✅",
+      message: `تم تأكيد استلام العربون النقدي لحجزك للسيارة ${updated.car.model}. الحجز الآن مؤكد بالكامل.`,
+      type: "booking",
+      relatedBooking: updated.id
+    });
+
     res.status(200).json({ success: true, booking: updated });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

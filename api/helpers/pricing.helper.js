@@ -121,23 +121,8 @@ export const calculateBookingBreakdown = async ({
 
   const totalPrice = Math.max(0, totalPriceBeforePromo - discountAmount);
 
-  // Deposit Logic (Tiered based on trust)
+  // Deposit Logic (Strictly uses global settings)
   let depositPercentage = globalSettings ? globalSettings.depositPercentage : 0.3;
-  
-  if (userId) {
-    const [user, completedCount] = await Promise.all([
-      prisma.user.findUnique({ where: { id: userId } }),
-      prisma.booking.count({ where: { userId, status: "completed" } })
-    ]);
-
-    if (user && user.identityStatus === "verified") {
-      if (completedCount >= 3) {
-        depositPercentage = 0; // "Elite" status: 0% deposit
-      } else {
-        depositPercentage = 0.15; // "Verified" status: 15% deposit instead of 30%
-      }
-    }
-  }
 
   const initialDepositAmount = Math.floor(totalPrice * depositPercentage);
   
