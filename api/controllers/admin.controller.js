@@ -727,6 +727,15 @@ export const rejectKyc = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const updateKycStatus = async (req, res) => {
+  const { status } = req.body;
+  if (status === 'verified') {
+    return approveKyc(req, res);
+  }
+  return rejectKyc(req, res);
+};
+
 export const approveKycByPhone = async (req, res) => {
   try {
     const { phone } = req.params;

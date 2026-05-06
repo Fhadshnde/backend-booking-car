@@ -24,7 +24,8 @@ import {
   updateCompany,
   deleteCompany,
   updateUser,
-  getCarsAdmin
+  getCarsAdmin,
+  updateKycStatus
 } from "../controllers/admin.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
 import { uploadSingleImage } from "../middleware/upload.js";
@@ -62,8 +63,10 @@ router.put("/bookings/:bookingId/refund/reject", rejectRefund);
 
 // KYC Management
 router.get("/kyc/pending", getPendingKyc);
+router.get("/users/kyc/pending", getPendingKyc);
 router.put("/kyc/:userId/approve", approveKyc);
 router.put("/kyc/:userId/reject", rejectKyc);
+router.put("/users/:userId/kyc", updateKycStatus);
 router.put("/kyc/phone/:phone/approve", approveKycByPhone);
 
 export default router;
