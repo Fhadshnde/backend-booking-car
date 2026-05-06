@@ -227,7 +227,9 @@ export const createCar = async (req, res) => {
       fuelType,
       seats,
       mileage,
-      description
+      description,
+      latitude,
+      longitude
     } = req.body;
 
     // Handle images from Multer (req.files) and any existing image URLs in req.body
@@ -275,6 +277,8 @@ export const createCar = async (req, res) => {
           description: String(description || ""),
           color: String(color),
           images: carImages,
+          latitude: latitude ? Number(latitude) : undefined,
+          longitude: longitude ? Number(longitude) : undefined,
           brand: { connect: { id: Number(brandId) } },
           category: { connect: { id: Number(categoryId) } },
           company: { connect: { id: Number(targetCompanyId) } }
@@ -295,16 +299,35 @@ export const createCar = async (req, res) => {
 export const updateCar = async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const {
+      model, brandId, categoryId, companyId, pricePerDay, insurancePrice,
+      year, licensePlate, color, transmission, fuelType, seats, mileage,
+      description, images, latitude, longitude
+    } = req.body;
 
     const car = await prisma.car.update({
       where: { id: Number(id) },
       data: {
-        ...updateData,
+        model,
+        brandId: brandId ? Number(brandId) : undefined,
+        categoryId: categoryId ? Number(categoryId) : undefined,
+        companyId: companyId ? Number(companyId) : undefined,
+        pricePerDay: pricePerDay ? Number(pricePerDay) : undefined,
+        insurancePrice: insurancePrice ? Number(insurancePrice) : undefined,
+        year: year ? Number(year) : undefined,
+        licensePlate,
+        color,
+        transmission,
+        fuelType,
+        seats: seats ? Number(seats) : undefined,
+        mileage: mileage ? Number(mileage) : undefined,
+        description,
+        latitude: latitude ? Number(latitude) : undefined,
+        longitude: longitude ? Number(longitude) : undefined,
         images: (() => {
           let imgs = [];
-          if (updateData.images) {
-            imgs = Array.isArray(updateData.images) ? updateData.images : [updateData.images];
+          if (images) {
+            imgs = Array.isArray(images) ? images : [images];
           }
           if (req.files && req.files.length > 0) {
             const uploaded = req.files.map(file => {
@@ -315,10 +338,6 @@ export const updateCar = async (req, res) => {
           }
           return imgs;
         })(),
-        pricePerDay: updateData.pricePerDay ? Number(updateData.pricePerDay) : undefined,
-        insurancePrice: updateData.insurancePrice ? Number(updateData.insurancePrice) : undefined,
-        latitude: updateData.latitude ? Number(updateData.latitude) : undefined,
-        longitude: updateData.longitude ? Number(updateData.longitude) : undefined
       }
     });
 
