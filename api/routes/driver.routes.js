@@ -1,10 +1,19 @@
 import express from "express";
-import { getAvailableDrivers, createDriver } from "../controllers/driver.controller.js";
+import { 
+  getDrivers, 
+  getAvailableDrivers, 
+  createDriver, 
+  updateDriver, 
+  deleteDriver 
+} from "../controllers/driver.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-router.get("/", protect, getAvailableDrivers);
-router.post("/", protect, restrictTo("admin"), createDriver);
+router.get("/", protect, getDrivers);
+router.get("/available", protect, getAvailableDrivers);
+router.post("/", protect, restrictTo("admin", "company"), createDriver);
+router.put("/:id", protect, restrictTo("admin", "company"), updateDriver);
+router.delete("/:id", protect, restrictTo("admin", "company"), deleteDriver);
 
 export default router;
