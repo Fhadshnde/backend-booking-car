@@ -70,11 +70,11 @@ export const createDriver = async (req, res) => {
       phone,
       licenseNumber,
       image,
-      isAvailable: isAvailable !== undefined ? isAvailable : true
+      isAvailable: isAvailable === 'true' || isAvailable === true
     };
 
     if (companyId && companyId !== 'null' && companyId !== '') {
-      driverData.company = { connect: { id: parseInt(companyId) } };
+      driverData.companyId = parseInt(companyId);
     }
 
     const driver = await prisma.driver.create({
@@ -82,6 +82,7 @@ export const createDriver = async (req, res) => {
     });
     res.status(201).json({ success: true, driver });
   } catch (error) {
+    console.error("Create Driver Error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
