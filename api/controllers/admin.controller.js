@@ -788,15 +788,56 @@ export const createCompany = async (req, res) => {
 export const updateCompany = async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const { 
+      name, address, city, logo, phone, licenseNumber, description, ownerId,
+      email, website, facebook, instagram, taxNumber, workingHoursOpen, workingHoursClose,
+      percentage 
+    } = req.body;
 
-    const company = await prisma.company.update({
-      where: { id: parseInt(id) },
-      data: updateData
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. تحديث بيانات الشركة (نستبعد الحقول التي لا تنتمي للجدول مباشرة)
+      const company = await tx.company.update({
+        where: { id: parseInt(id) },
+        data: {
+          name, address, city, logo, phone, licenseNumber, description,
+          email, website, facebook, instagram, taxNumber, workingHoursOpen, workingHoursClose
+        }
+      });
+
+      // 2. إذا تم اختيار صاحب شركة جديد
+      if (ownerId) {
+        // فك ارتباط أي مستخدم قديم بهذه الشركة (اختياري حسب منطق العمل)
+        await tx.user.updateMany({
+          where: { companyId: company.id },
+          data: { companyId: null, role: 'user' }
+        });
+
+        // ربط المالك الجديد
+        await tx.user.update({
+          where: { id: parseInt(ownerId) },
+          data: { companyId: company.id, role: 'company' }
+        });
+      }
+
+      // 3. تحديث العمولة إذا تم إرسال نسبة جديدة
+      if (percentage) {
+        await tx.commission.upsert({
+          where: { companyId: company.id }, // نفترض أن هناك UNIQUE constraint على companyId
+          update: { percentage: parseFloat(percentage) },
+          create: { 
+            companyId: company.id, 
+            percentage: parseFloat(percentage),
+            updatedBy: req.user?.id ? parseInt(req.user.id) : null
+          }
+        });
+      }
+
+      return company;
     });
 
-    res.status(200).json({ success: true, message: "تم تحديث البيانات بنجاح", company });
+    res.json({ success: true, message: "تم تحديث بيانات الشركة والعمولات بنجاح", company: result });
   } catch (error) {
+    console.error("Update Company Error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
