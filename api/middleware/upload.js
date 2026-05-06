@@ -6,24 +6,8 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// تحديد مسار مجلد الـ uploads في الجذر (Root)
-const uploadDir = path.resolve(__dirname, "../uploads");
-
-// التأكد من وجود المجلد
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// إعداد التخزين باستخدام المسار المطلق
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
-  }
-});
+// إعداد التخزين في الذاكرة (Memory Storage) لدعم البيئات ذات نظام الملفات للقراءة فقط مثل Vercel
+const storage = multer.memoryStorage();
 
 // فلتر أنواع الملفات (كما هو)
 const fileFilter = (req, file, cb) => {

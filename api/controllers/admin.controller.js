@@ -822,7 +822,9 @@ export const createCompany = async (req, res) => {
       const company = await tx.company.create({
         data: {
           name, address, city, 
-          logo: req.file ? `/uploads/${req.file.filename}` : logo,
+          logo: req.file 
+            ? `data:${req.file.mimetype};base64,${Buffer.from(req.file.buffer).toString("base64")}` 
+            : logo,
           phone, licenseNumber, description,
           email, website, facebook, instagram, taxNumber, workingHoursOpen, workingHoursClose,
           isApproved: true
@@ -877,7 +879,9 @@ export const updateCompany = async (req, res) => {
         where: { id: parseInt(id) },
         data: {
           name, address, city, 
-          logo: req.file ? `/uploads/${req.file.filename}` : logo,
+          logo: req.file 
+            ? `data:${req.file.mimetype};base64,${Buffer.from(req.file.buffer).toString("base64")}` 
+            : logo,
           phone, licenseNumber, description,
           email, website, facebook, instagram, taxNumber, workingHoursOpen, workingHoursClose
         }

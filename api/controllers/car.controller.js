@@ -237,7 +237,10 @@ export const createCar = async (req, res) => {
     }
     
     if (req.files && req.files.length > 0) {
-      const uploadedPaths = req.files.map(file => `/uploads/${file.filename}`);
+      const uploadedPaths = req.files.map(file => {
+        const b64 = Buffer.from(file.buffer).toString("base64");
+        return `data:${file.mimetype};base64,${b64}`;
+      });
       carImages = [...carImages, ...uploadedPaths];
     }
 
@@ -304,7 +307,10 @@ export const updateCar = async (req, res) => {
             imgs = Array.isArray(updateData.images) ? updateData.images : [updateData.images];
           }
           if (req.files && req.files.length > 0) {
-            const uploaded = req.files.map(f => `/uploads/${f.filename}`);
+            const uploaded = req.files.map(file => {
+              const b64 = Buffer.from(file.buffer).toString("base64");
+              return `data:${file.mimetype};base64,${b64}`;
+            });
             imgs = [...imgs, ...uploaded];
           }
           return imgs;
