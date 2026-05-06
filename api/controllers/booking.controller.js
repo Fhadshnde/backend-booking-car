@@ -624,9 +624,9 @@ export const completeBooking = async (req, res) => {
     const booking = await prisma.booking.findUnique({ where: { id: Number(id) } });
     if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });
 
-    const defaultSettings = { cashbackPercentage: 5 };
+    const defaultSettings = { cashbackPercentage: 0.05 };
     const settings = await prisma.setting.findFirst({ orderBy: { createdAt: "desc" } }) || defaultSettings;
-    const cashbackAmount = (booking.totalPrice * settings.cashbackPercentage) / 100;
+    const cashbackAmount = Math.floor(booking.totalPrice * settings.cashbackPercentage);
 
     const result = await prisma.$transaction([
       prisma.booking.update({
