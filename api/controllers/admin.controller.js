@@ -236,6 +236,46 @@ export const getPendingCompanies = async (req, res) => {
   }
 };
 
+export const getBookings = async (req, res) => {
+  try {
+    const { status, search, page = 1, limit = 20 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    let where = {};
+    if (status && status !== 'all') where.status = status;
+    if (search) {
+      where.OR = [
+        { user: { name: { contains: search, mode: 'insensitive' } } },
+        { user: { phone: { contains: search } } },
+        { confirmationCode: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    const [bookings, total] = await Promise.all([
+      prisma.booking.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: { select: { name: true, phone: true, avatar: true } },
+          car: { 
+            include: { 
+              brand: { select: { name: true } }
+            } 
+          },
+          company: { select: { name: true, logo: true } }
+        }
+      }),
+      prisma.booking.count({ where })
+    ]);
+
+    res.status(200).json({ success: true, data: bookings, total });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const cancelBookingAdmin = async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -558,6 +598,41 @@ export const updateUser = async (req, res) => {
     res.status(200).json({ success: true, message: "تم تحديث البيانات بنجاح", user });
   } catch (error) {
     res.status(500).json({ success: false, message: "فشل في تحديث بيانات المستخدم" });
+  }
+};
+
+export const getCarsAdmin = async (req, res) => {
+  try {
+    const { search, page = 1, limit = 20 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    let where = {};
+    if (search) {
+      where.OR = [
+        { model: { contains: search, mode: 'insensitive' } },
+        { licensePlate: { contains: search, mode: 'insensitive' } },
+        { company: { name: { contains: search, mode: 'insensitive' } } }
+      ];
+    }
+
+    const [cars, total] = await Promise.all([
+      prisma.car.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          company: { select: { name: true, logo: true, city: true } },
+          brand: { select: { name: true, logo: true } },
+          category: { select: { name: true, icon: true } }
+        }
+      }),
+      prisma.car.count({ where })
+    ]);
+
+    res.status(200).json({ success: true, data: cars, total });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

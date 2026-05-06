@@ -23,7 +23,8 @@ import {
   createCompany,
   updateCompany,
   deleteCompany,
-  updateUser
+  updateUser,
+  getCarsAdmin
 } from "../controllers/admin.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
 
@@ -48,7 +49,7 @@ router.put("/companies/:companyId/reject", rejectCompany);
 
 router.delete("/bookings/:bookingId/cancel", cancelBookingAdmin);
 router.get("/reports/bookings", getBookingReports);
-
+router.get("/cars", getCarsAdmin);
 router.put("/cars/:carId/suspend", suspendCar);
 router.put("/cars/:carId/unsuspend", unsuspendCar);
 
