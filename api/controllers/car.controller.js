@@ -227,9 +227,19 @@ export const createCar = async (req, res) => {
       fuelType,
       seats,
       mileage,
-      description,
-      images
+      description
     } = req.body;
+
+    // Handle images from Multer (req.files) and any existing image URLs in req.body
+    let carImages = [];
+    if (req.body.images) {
+      carImages = Array.isArray(req.body.images) ? req.body.images : [req.body.images];
+    }
+    
+    if (req.files && req.files.length > 0) {
+      const uploadedPaths = req.files.map(file => `/uploads/${file.filename}`);
+      carImages = [...carImages, ...uploadedPaths];
+    }
 
     const targetCompanyId = req.user.role.toLowerCase() === "company" 
       ? req.user.companyId 
@@ -261,7 +271,7 @@ export const createCar = async (req, res) => {
           mileage: Number(mileage),
           description: String(description || ""),
           color: String(color),
-          images: Array.isArray(images) ? images : [],
+          images: carImages,
           brand: { connect: { id: Number(brandId) } },
           category: { connect: { id: Number(categoryId) } },
           company: { connect: { id: Number(targetCompanyId) } }
@@ -288,6 +298,17 @@ export const updateCar = async (req, res) => {
       where: { id: Number(id) },
       data: {
         ...updateData,
+        images: (() => {
+          let imgs = [];
+          if (updateData.images) {
+            imgs = Array.isArray(updateData.images) ? updateData.images : [updateData.images];
+          }
+          if (req.files && req.files.length > 0) {
+            const uploaded = req.files.map(f => `/uploads/${f.filename}`);
+            imgs = [...imgs, ...uploaded];
+          }
+          return imgs;
+        })(),
         pricePerDay: updateData.pricePerDay ? Number(updateData.pricePerDay) : undefined,
         insurancePrice: updateData.insurancePrice ? Number(updateData.insurancePrice) : undefined,
         latitude: updateData.latitude ? Number(updateData.latitude) : undefined,

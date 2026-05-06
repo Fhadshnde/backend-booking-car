@@ -821,7 +821,9 @@ export const createCompany = async (req, res) => {
       // 1. إنشاء الشركة بكافة الحقول
       const company = await tx.company.create({
         data: {
-          name, address, city, logo, phone, licenseNumber, description,
+          name, address, city, 
+          logo: req.file ? `/uploads/${req.file.filename}` : logo,
+          phone, licenseNumber, description,
           email, website, facebook, instagram, taxNumber, workingHoursOpen, workingHoursClose,
           isApproved: true
         }
@@ -870,11 +872,13 @@ export const updateCompany = async (req, res) => {
     } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
-      // 1. تحديث بيانات الشركة (نستبعد الحقول التي لا تنتمي للجدول مباشرة)
+      // 1. تحديث بيانات الشركة
       const company = await tx.company.update({
         where: { id: parseInt(id) },
         data: {
-          name, address, city, logo, phone, licenseNumber, description,
+          name, address, city, 
+          logo: req.file ? `/uploads/${req.file.filename}` : logo,
+          phone, licenseNumber, description,
           email, website, facebook, instagram, taxNumber, workingHoursOpen, workingHoursClose
         }
       });

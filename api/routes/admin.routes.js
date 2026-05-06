@@ -27,6 +27,7 @@ import {
   getCarsAdmin
 } from "../controllers/admin.controller.js";
 import { protect, restrictTo } from "../middleware/auth.middleware.js";
+import { uploadSingleImage } from "../middleware/upload.js";
 
 const router = express.Router();
 
@@ -41,8 +42,8 @@ router.put("/users/:userId/manual-wallet", manualWalletTransaction);
 router.put("/users/:id", updateUser);
 
 router.get("/companies/pending", getPendingCompanies);
-router.post("/companies", createCompany);
-router.put("/companies/:id", updateCompany);
+router.post("/companies", uploadSingleImage, createCompany);
+router.put("/companies/:id", uploadSingleImage, updateCompany);
 router.delete("/companies/:id", deleteCompany);
 router.put("/companies/:companyId/approve", approveCompany);
 router.put("/companies/:companyId/reject", rejectCompany);
