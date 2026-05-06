@@ -590,7 +590,7 @@ export const updateBooking = async (req, res) => {
 export const updateBookingStatusAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, driverId, driverPrice, deliveryFee, totalPrice } = req.body;
 
     const booking = await prisma.booking.findUnique({ where: { id: Number(id) } });
     if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });
@@ -600,10 +600,17 @@ export const updateBookingStatusAdmin = async (req, res) => {
       return res.status(403).json({ success: false, message: "غير مصرح لك بتعديل هذا الحجز" });
     }
 
+    const data = { updatedAt: new Date() };
+    if (status) data.status = status;
+    if (driverId !== undefined) data.driverId = driverId ? parseInt(driverId) : null;
+    if (driverPrice !== undefined) data.driverPrice = parseFloat(driverPrice);
+    if (deliveryFee !== undefined) data.deliveryFee = parseFloat(deliveryFee);
+    if (totalPrice !== undefined) data.totalPrice = parseFloat(totalPrice);
+
     const updated = await prisma.booking.update({
       where: { id: Number(id) },
-      data: { status, updatedAt: new Date() },
-      include: { user: true, car: true, company: true }
+      data,
+      include: { user: true, car: true, company: true, driver: true }
     });
 
     notifyUser({
