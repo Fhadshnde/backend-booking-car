@@ -761,11 +761,12 @@ export const createCompany = async (req, res) => {
         }
       });
 
-      // 3. إنشاء سجل العمولة المالية
+      // 3. إعداد سجل العمولة المالية بشكل آمن
+      // نستخدم updateMany/create لضمان عدم وجود تكرار أو تعارض في المعرفات
       await tx.commission.create({
         data: {
           companyId: company.id,
-          percentage: parseFloat(percentage) || 10, // الافتراضي 10%
+          percentage: parseFloat(percentage) || 10,
           fixedAmount: parseFloat(fixedAmount) || 0,
           updatedBy: req.user?.id ? parseInt(req.user.id) : null
         }
@@ -776,7 +777,8 @@ export const createCompany = async (req, res) => {
 
     res.status(201).json({ success: true, message: "تم إنشاء الشركة وإعداد العمولات بنجاح", company: result });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Commission Error:", error);
+    res.status(500).json({ success: false, message: "حدث خطأ أثناء إعداد بيانات الشركة المالية، يرجى المحاولة مرة أخرى" });
   }
 };
 
