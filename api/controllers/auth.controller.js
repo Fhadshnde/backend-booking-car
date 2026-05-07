@@ -16,6 +16,19 @@ export const register = async (req, res) => {
       return res.status(400).json({ success: false, message: "جميع الحقول مطلوبة" });
     }
 
+    // التحقق من طول رقم الهاتف
+    const trimmedPhone = phone.trim();
+    const startsWithZero = trimmedPhone.startsWith('0');
+    const requiredLength = startsWithZero ? 11 : 10;
+    if (trimmedPhone.length !== requiredLength) {
+      return res.status(400).json({
+        success: false,
+        message: startsWithZero
+          ? "رقم الهاتف يجب أن يكون ١١ رقماً عند البدء بصفر"
+          : "رقم الهاتف يجب أن يكون ١٠ أرقام"
+      });
+    }
+
     const validRoles = ["user", "company"];
     const assignedRole = validRoles.includes(role) ? role : "user";
 
