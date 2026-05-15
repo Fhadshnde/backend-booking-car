@@ -81,10 +81,10 @@ export const createBooking = async (req, res) => {
       return res.status(404).json({ success: false, message: "المستخدم غير موجود" });
     }
 
-    console.log("User Data from DB:", { 
-      identityStatus: user.identityStatus, 
+    console.log("User Data from DB:", {
+      identityStatus: user.identityStatus,
       licenseNumber: user.licenseNumber,
-      hasDriver: hasDriver 
+      hasDriver: hasDriver
     });
 
     // أ. فحص الحظر المباشر على الحساب
@@ -118,9 +118,9 @@ export const createBooking = async (req, res) => {
     } else {
       // قيادة ذاتية: هوية + إجازة سوق
       if (user.identityStatus !== "verified" || !user.licenseNumber) {
-        console.log("❌ KYC Failed: verified status or license missing", { 
-          status: user.identityStatus, 
-          license: user.licenseNumber 
+        console.log("❌ KYC Failed: verified status or license missing", {
+          status: user.identityStatus,
+          license: user.licenseNumber
         });
         return res.status(400).json({
           success: false,
@@ -491,9 +491,9 @@ export const getBookings = async (req, res) => {
         where,
         skip,
         take: Number(limit),
-        include: { 
-          user: { select: { name: true, phone: true, profileImage: true } }, 
-          car: { select: { model: true, images: true, licensePlate: true, color: true } }, 
+        include: {
+          user: { select: { name: true, phone: true, profileImage: true } },
+          car: { select: { model: true, images: true, licensePlate: true, color: true } },
           company: { select: { name: true, phone: true } },
           driver: { select: { name: true, phone: true } },
           promoCode: { select: { code: true, value: true, type: true } }
@@ -528,11 +528,11 @@ export const getBookings = async (req, res) => {
       success: true,
       bookings,
       stats: statsObj,
-      pagination: { 
-        total, 
-        page: Number(page), 
-        limit: Number(limit), 
-        pages: Math.ceil(total / limit) 
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        pages: Math.ceil(total / limit)
       }
     });
   } catch (error) {
@@ -601,7 +601,9 @@ export const updateBookingStatusAdmin = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, driverId, driverPrice, deliveryFee, totalPrice } = req.body;
-    
+
+    const booking = await prisma.booking.findUnique({ where: { id: Number(id) } });
+
     console.log(`[DEBUG] Updating booking ${id}:`, { status, driverId, driverPrice, deliveryFee, totalPrice });
     if (!booking) return res.status(404).json({ success: false, message: "الحجز غير موجود" });
 
@@ -838,12 +840,10 @@ export const deleteBooking = async (req, res) => {
       return res.status(404).json({ success: false, message: "الحجز غير موجود" });
     }
 
-    // Authorization: Admin or the company that owns the car
     if (req.user.role !== 'admin' && req.user.companyId !== booking.companyId) {
       return res.status(403).json({ success: false, message: "غير مصرح لك بحذف هذا الحجز" });
     }
 
-    // Delete related records manually since cascade is not set in prisma schema
     await prisma.$transaction([
       prisma.damageReport.deleteMany({ where: { bookingId: Number(id) } }),
       prisma.review.deleteMany({ where: { bookingId: Number(id) } }),

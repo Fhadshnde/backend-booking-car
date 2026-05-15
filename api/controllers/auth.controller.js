@@ -16,7 +16,6 @@ export const register = async (req, res) => {
       return res.status(400).json({ success: false, message: "جميع الحقول مطلوبة" });
     }
 
-    // التحقق من طول رقم الهاتف
     const trimmedPhone = phone.trim();
     const startsWithZero = trimmedPhone.startsWith('0');
     const requiredLength = startsWithZero ? 11 : 10;
